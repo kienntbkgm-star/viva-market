@@ -358,17 +358,20 @@ export default function ItemDetailScreen() {
 
           <View style={styles.headerRow}>
             <Text style={styles.name}>{item.name}</Text>
-            <View style={styles.priceTag}>
-              <Text style={styles.price}>{formatCurrency(item.pricePromo * 1000)}đ</Text>
-              {item.priceNormal > item.pricePromo && (
-                <Text style={styles.oldPrice}>{formatCurrency(item.priceNormal * 1000)}đ</Text>
-              )}
-            </View>
           </View>
 
           <Text style={styles.description}>
             {item.note || item.description || "Chưa có mô tả cho món ăn này."}
           </Text>
+          {item.priceNormal > item.pricePromo && (
+            <Text style={styles.discountNote}>
+              Bạn được giảm{' '}
+              <Text style={{ fontWeight: 'bold' }}>
+                {formatCurrency((item.priceNormal - item.pricePromo) * 1000)}đ
+              </Text>{' '}
+              cho món này!
+            </Text>
+          )}
 
           {/* Hiển thị Size Options */}
           {sizeOptions.length > 0 && (
@@ -450,7 +453,9 @@ export default function ItemDetailScreen() {
 
       <View style={styles.footer}>
         <View style={styles.priceSummary}>
-          <Text style={styles.totalLabel}>Tổng cộng:</Text>
+          <Text style={styles.totalLabel}>
+            {item.priceNormal > item.pricePromo ? 'Giá đã giảm:' : 'Giá:'}
+          </Text>
           <Text style={styles.totalPrice}>{formatCurrency(totalPrice)}đ</Text>
         </View>
         <TouchableOpacity 
@@ -495,16 +500,22 @@ const styles = StyleSheet.create({
   shopInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   shopIconContainer: { marginRight: 10, padding: 8, backgroundColor: '#F0F8FF', borderRadius: 10 },
   shopName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
-  addressRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  addressRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 }, // Giữ nguyên
   shopAddress: { fontSize: 12, color: '#666' },
   typeBadge: { backgroundColor: COLORS.primary + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   typeText: { fontSize: 12, color: COLORS.primary, fontWeight: '500' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  name: { fontSize: 22, fontWeight: 'bold', flex: 1, marginRight: 10 },
-  priceTag: { alignItems: 'flex-end' },
+  headerRow: { marginBottom: 15 }, // Chỉ giữ margin bottom
+  name: { fontSize: 22, fontWeight: 'bold' }, // Bỏ flex và marginRight
+  // priceTag: { alignItems: 'flex-end' }, // Đã loại bỏ
   price: { fontSize: 20, fontWeight: 'bold', color: COLORS.primary },
   oldPrice: { fontSize: 14, color: '#999', textDecorationLine: 'line-through' },
-  description: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 25 },
+  description: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 10 }, // Giảm margin bottom để gần discount note
+  discountNote: { // Style mới cho chú thích giảm giá
+    fontSize: 13,
+    color: COLORS.primary,
+    fontWeight: '600',
+    marginBottom: 25, // Đảm bảo khoảng cách với section tiếp theo
+  },
   section: { marginBottom: 25 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#333' },
   optionsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

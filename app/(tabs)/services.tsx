@@ -27,7 +27,7 @@ export default function ServicesScreen() {
                 onPress={() => handlePressService(item)} // Thêm sự kiện nhấn vào card
             >
                 <Image source={{ uri: item.image || 'https://via.placeholder.com/150' }} style={styles.serviceImage} />
-                <div style={styles.cardContent}>
+                <View style={styles.cardContent}>
                     <Text style={styles.serviceName} numberOfLines={2}>{item.name}</Text>
                     <View style={styles.priceRow}>
                         <Text style={styles.promoPrice}>{pricePromo.toLocaleString('vi-VN')}đ</Text>
@@ -41,7 +41,7 @@ export default function ServicesScreen() {
                     >
                         <Text style={styles.bookBtnText}>Đặt ngay</Text>
                     </TouchableOpacity>
-                </div>
+                </View>
             </TouchableOpacity>
         );
     };
