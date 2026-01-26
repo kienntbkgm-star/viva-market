@@ -1,0 +1,15 @@
+{
+  "output": {
+    "filePath": "project-auth-core.txt"
+  },
+  "include": [
+    "app/index.tsx",
+    "app/login.tsx",
+    "app/register.tsx",
+    "app/_layout.tsx",
+    "app/+html.tsx",
+    "app/ItemDetail.tsx",
+    "app/ServiceDetail.tsx"
+  ],
+  "exclude": ["node_modules", ".expo", "dist"]
+}

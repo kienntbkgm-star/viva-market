@@ -1,0 +1,12 @@
+{
+  "output": {
+    "filePath": "project-tabs-shipper.txt"
+  },
+  "include": [
+    "app/(tabs)/**/*",
+    "app/shipper/**/*"
+  ],
+  "ignore": {
+    "customPatterns": ["**/*.ini"]
+  }
+}

@@ -1,0 +1,1728 @@
+{
+  "system": {
+    "logDate": "1/26/2024, 8:30:25 AM",
+    "maxGoodShop": 2,
+    "maxShop": {
+      "good": 2,
+      "food": 2
+    },
+    "shipSelectEnable": true,
+    "log": [],
+    "promo": {
+      "enable": true,
+      "freeShipCode": "FSjjk"
+    },
+    "adminPhone": "0931837176",
+    "timeOut": {
+      "food": 3600,
+      "good": 3600,
+      "service": 3600,
+      "finish": 60
+    },
+    "welcomeImage": [
+      "https://i.imgur.com/1HwlhV5.png",
+      "https://i.imgur.com/NAqWeJt.png",
+      "https://i.imgur.com/fTLRbMB.png"
+    ],
+    "maxFoodShop": 2,
+    "money": {
+      "managerGoodFee": 5,
+      "adminShipRatio": 10,
+      "managerShipRatio": 20,
+      "shipperShipRatio": 70,
+      "refusePunish": 10
+    },
+    "ship": {
+      "selectEnable": true,
+      "food": {
+        "step": 8,
+        "normalValue": 11,
+        "atDoorValue": 11
+      }
+    }
+  },
+  "promos": [
+    {
+      "id": "01",
+      "code": "FREESHIP01",
+      "durationDays": 10,
+      "usedBy": [
+        216,
+        213,
+        205
+      ],
+      "created": "2026-01-18T10:00:00Z",
+      "value": 5,
+      "limit": 100,
+      "maxPerUser": 2,
+      "used": 4,
+      "enable": true
+    },
+    {
+      "id": "02",
+      "durationDays": 30,
+      "value": 10,
+      "limit": 50,
+      "code": "FREESHIP02",
+      "used": 0,
+      "usedBy": [],
+      "maxPerUser": 1,
+      "created": "2026-01-18T10:00:00Z",
+      "enable": true
+    }
+  ],
+  "itemType": [
+    {
+      "id": 0,
+      "name": "All",
+      "type": "All",
+      "index": 0,
+      "image": "https://i.imgur.com/9v0kujZ.png"
+    },
+    {
+      "id": 1,
+      "image": "https://i.imgur.com/AheDH8c.png",
+      "type": "food",
+      "index": 1,
+      "name": "Đồ ăn"
+    },
+    {
+      "id": 2,
+      "name": "Đồ uống",
+      "index": 2,
+      "type": "food",
+      "image": "https://i.imgur.com/Xe379gs.png"
+    },
+    {
+      "id": 3,
+      "image": "https://i.imgur.com/ZZzowHG.png",
+      "type": "good",
+      "name": "Rau",
+      "index": 3
+    },
+    {
+      "id": 4,
+      "name": "Thịt",
+      "index": 4,
+      "image": "https://i.imgur.com/AxNlJcY.png",
+      "type": "good"
+    },
+    {
+      "id": 5,
+      "name": "Cá",
+      "index": 5,
+      "type": "good",
+      "image": "https://i.imgur.com/JApgjz9.png"
+    },
+    {
+      "id": 6,
+      "type": "good",
+      "image": "https://i.imgur.com/Mgo3R5v.png",
+      "name": "Trái cây",
+      "index": 6
+    },
+    {
+      "id": 7,
+      "type": "e",
+      "name": "Tivi",
+      "index": 7,
+      "image": "https://i.imgur.com/OsK6Q8Q.jpg"
+    },
+    {
+      "id": 8,
+      "type": "e",
+      "index": 8,
+      "name": "Tủ lạnh",
+      "image": "https://i.imgur.com/FA0icCX.jpg"
+    }
+  ],
+  "foods": [
+    {
+      "id": 1,
+      "note": "ngon lắm a 2 sdfasd asdfasdf asdfasdfas asdfasdf asdfasdfa asdfasf",
+      "index": 1,
+      "img": "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+      "timeEnd": 24,
+      "option": [],
+      "isOutOfTime": false,
+      "moneyShare": 0,
+      "name": "Cơm tấm 011",
+      "log": [],
+      "status": "enable",
+      "image": [
+        "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+        "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+        "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg"
+      ],
+      "effectiveStatus": "enable",
+      "type": "đồ ăn",
+      "orderCount": 1,
+      "priceNormal": 44,
+      "pricePromo": 44,
+      "timeStart": 0,
+      "shopId": 207
+    },
+    {
+      "id": 2,
+      "priceNormal": 51,
+      "option": [],
+      "log": [],
+      "orderCount": 1,
+      "note": "ngon lắm",
+      "type": "đồ ăn",
+      "img": "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+      "timeEnd": 24,
+      "timeStart": 0,
+      "isOutOfTime": false,
+      "index": 2,
+      "shopId": 205,
+      "image": [
+        "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+        "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+        "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg"
+      ],
+      "pricePromo": 51,
+      "status": "enable",
+      "name": "Cơm tấm 02",
+      "effectiveStatus": "enable"
+    },
+    {
+      "id": 3,
+      "timeStart": 0,
+      "isOutOfTime": false,
+      "timeEnd": 24,
+      "note": "ngon lắm",
+      "option": [],
+      "priceNormal": 52,
+      "effectiveStatus": "enable",
+      "img": "https://i.ibb.co/ccRzrH91/com-suon-12.jpg",
+      "image": [
+        "https://i.ibb.co/ccRzrH91/com-suon-12.jpg",
+        "https://i.ibb.co/ccRzrH91/com-suon-12.jpg",
+        "https://i.ibb.co/ccRzrH91/com-suon-12.jpg"
+      ],
+      "type": "đồ ăn",
+      "orderCount": 0,
+      "name": "Cơm sườn",
+      "shopId": 206,
+      "log": [],
+      "pricePromo": 44,
+      "index": 3,
+      "status": "enable"
+    },
+    {
+      "id": 4,
+      "status": "enable",
+      "pricePromo": 43,
+      "type": "đồ ăn",
+      "name": "Cơm gà chiên",
+      "orderCount": 0,
+      "timeStart": 0,
+      "img": "https://i.ibb.co/N6qZ4KT8/com-ga-chien-13.jpg",
+      "isOutOfTime": false,
+      "index": 4,
+      "note": "ngon lắm",
+      "effectiveStatus": "enable",
+      "timeEnd": 24,
+      "image": [
+        "https://i.ibb.co/N6qZ4KT8/com-ga-chien-13.jpg",
+        "https://i.ibb.co/N6qZ4KT8/com-ga-chien-13.jpg",
+        "https://i.ibb.co/N6qZ4KT8/com-ga-chien-13.jpg"
+      ],
+      "option": [],
+      "log": [],
+      "priceNormal": 53,
+      "shopId": 207
+    },
+    {
+      "id": 5,
+      "isOutOfTime": false,
+      "effectiveStatus": "enable",
+      "note": "ngon lắm",
+      "shopId": 207,
+      "image": [
+        "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg",
+        "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg",
+        "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg"
+      ],
+      "img": "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg",
+      "timeStart": 0,
+      "index": 5,
+      "pricePromo": 44,
+      "type": "đồ uống",
+      "option": [],
+      "timeEnd": 24,
+      "orderCount": 0,
+      "status": "enable",
+      "priceNormal": 54,
+      "name": "Trân châu đường đen",
+      "log": []
+    },
+    {
+      "id": 6,
+      "index": 6,
+      "note": "ngon lắm",
+      "option": [],
+      "status": "enable",
+      "priceNormal": 55,
+      "timeStart": 0,
+      "type": "đồ ăn",
+      "img": "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg",
+      "orderCount": 0,
+      "pricePromo": 45,
+      "name": "Cơm gà Hải Nam",
+      "log": [],
+      "timeEnd": 24,
+      "isOutOfTime": false,
+      "shopId": 208,
+      "effectiveStatus": "enable",
+      "image": [
+        "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg",
+        "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg",
+        "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg"
+      ]
+    },
+    {
+      "id": 7,
+      "timeEnd": 24,
+      "status": "enable",
+      "option": [],
+      "isOutOfTime": false,
+      "name": "Bò lúc lắc",
+      "pricePromo": 46,
+      "image": [
+        "https://i.ibb.co/4gVDsQnJ/bo-luc-lac-14.jpg",
+        "https://i.ibb.co/4gVDsQnJ/bo-luc-lac-14.jpg",
+        "https://i.ibb.co/4gVDsQnJ/bo-luc-lac-14.jpg"
+      ],
+      "log": [],
+      "img": "https://i.ibb.co/4gVDsQnJ/bo-luc-lac-14.jpg",
+      "priceNormal": 56,
+      "timeStart": 0,
+      "note": "ngon lắm",
+      "type": "đồ ăn",
+      "shopId": 205,
+      "index": 7,
+      "effectiveStatus": "enable",
+      "orderCount": 0
+    },
+    {
+      "id": 8,
+      "priceNormal": 57,
+      "option": [],
+      "index": 8,
+      "orderCount": 0,
+      "type": "đồ ăn",
+      "effectiveStatus": "enable",
+      "log": [],
+      "image": [
+        "https://i.ibb.co/23CmmpcV/banh-plan-16.jpg",
+        "https://i.ibb.co/23CmmpcV/banh-plan-16.jpg",
+        "https://i.ibb.co/23CmmpcV/banh-plan-16.jpg"
+      ],
+      "timeEnd": 24,
+      "img": "https://i.ibb.co/23CmmpcV/banh-plan-16.jpg",
+      "shopId": 206,
+      "status": "enable",
+      "timeStart": 0,
+      "pricePromo": 47,
+      "name": "Bánh Plan",
+      "note": "ngon lắm",
+      "isOutOfTime": false
+    },
+    {
+      "id": 9,
+      "img": "https://i.ibb.co/C5gZfGWC/com-ca-chien-17.jpg",
+      "priceNormal": 58,
+      "name": "Cơm cá chiên",
+      "timeStart": 0,
+      "index": 9,
+      "note": "ngon lắm",
+      "timeEnd": 24,
+      "status": "enable",
+      "option": [],
+      "type": "đồ ăn",
+      "shopId": 207,
+      "orderCount": 0,
+      "pricePromo": 48,
+      "image": [
+        "https://i.ibb.co/C5gZfGWC/com-ca-chien-17.jpg",
+        "https://i.ibb.co/C5gZfGWC/com-ca-chien-17.jpg",
+        "https://i.ibb.co/C5gZfGWC/com-ca-chien-17.jpg"
+      ],
+      "effectiveStatus": "enable",
+      "isOutOfTime": false,
+      "log": []
+    },
+    {
+      "id": 11,
+      "isOutOfTime": false,
+      "pricePromo": 50,
+      "img": "https://i.ibb.co/ybr6Nyj/dua-luoi-02.jpg",
+      "option": [],
+      "status": "enable",
+      "effectiveStatus": "enable",
+      "timeStart": 0,
+      "note": "ngon lắm",
+      "type": "đồ uống",
+      "priceNormal": 60,
+      "image": [
+        "https://i.ibb.co/ybr6Nyj/dua-luoi-02.jpg",
+        "https://i.ibb.co/ybr6Nyj/dua-luoi-02.jpg",
+        "https://i.ibb.co/ybr6Nyj/dua-luoi-02.jpg"
+      ],
+      "timeEnd": 24,
+      "log": [],
+      "name": "Dưa lưới",
+      "index": 11,
+      "shopId": 205,
+      "orderCount": 0
+    },
+    {
+      "id": 12,
+      "note": "ngon lắm",
+      "image": [
+        "https://i.ibb.co/Q7qFq2gD/com-suon-chien-10.jpg",
+        "https://i.ibb.co/Q7qFq2gD/com-suon-chien-10.jpg",
+        "https://i.ibb.co/Q7qFq2gD/com-suon-chien-10.jpg"
+      ],
+      "shopId": 208,
+      "index": 12,
+      "img": "https://i.ibb.co/Q7qFq2gD/com-suon-chien-10.jpg",
+      "isOutOfTime": false,
+      "timeStart": 0,
+      "option": [],
+      "log": [],
+      "orderCount": 0,
+      "priceNormal": 61,
+      "pricePromo": 51,
+      "effectiveStatus": "enable",
+      "name": "Cơm sườn chiên",
+      "type": "đồ ăn",
+      "timeEnd": 24,
+      "status": "enable"
+    },
+    {
+      "id": 13,
+      "priceNormal": 62,
+      "timeStart": 0,
+      "option": [],
+      "effectiveStatus": "enable",
+      "name": "Nước trái cây",
+      "index": 13,
+      "shopId": 206,
+      "orderCount": 0,
+      "log": [],
+      "status": "enable",
+      "img": "https://i.ibb.co/3y517C6S/nuoc-trai-cay-03.jpg",
+      "note": "ngon lắm",
+      "type": "đồ uống",
+      "pricePromo": 52,
+      "isOutOfTime": false,
+      "image": [
+        "https://i.ibb.co/3y517C6S/nuoc-trai-cay-03.jpg",
+        "https://i.ibb.co/3y517C6S/nuoc-trai-cay-03.jpg",
+        "https://i.ibb.co/3y517C6S/nuoc-trai-cay-03.jpg"
+      ],
+      "timeEnd": 24
+    },
+    {
+      "id": 14,
+      "pricePromo": 53,
+      "type": "đồ uống",
+      "note": "ngon lắm",
+      "option": [],
+      "status": "enable",
+      "priceNormal": 63,
+      "img": "https://i.ibb.co/Tx3dNxQq/nuoc-tao-04.jpg",
+      "log": [],
+      "timeEnd": 24,
+      "orderCount": 0,
+      "image": [
+        "https://i.ibb.co/Tx3dNxQq/nuoc-tao-04.jpg",
+        "https://i.ibb.co/Tx3dNxQq/nuoc-tao-04.jpg",
+        "https://i.ibb.co/Tx3dNxQq/nuoc-tao-04.jpg"
+      ],
+      "isOutOfTime": false,
+      "name": "Nước táo",
+      "shopId": 207,
+      "timeStart": 0,
+      "index": 14,
+      "effectiveStatus": "enable"
+    },
+    {
+      "id": 15,
+      "shopId": 208,
+      "type": "đồ uống",
+      "priceNormal": 64,
+      "status": "enable",
+      "log": [],
+      "img": "https://i.ibb.co/VWyKsmGH/nuoc-oi-05.jpg",
+      "timeEnd": 24,
+      "name": "Nước ổi",
+      "isOutOfTime": false,
+      "note": "ngon lắm",
+      "orderCount": 0,
+      "image": [
+        "https://i.ibb.co/VWyKsmGH/nuoc-oi-05.jpg",
+        "https://i.ibb.co/VWyKsmGH/nuoc-oi-05.jpg",
+        "https://i.ibb.co/VWyKsmGH/nuoc-oi-05.jpg"
+      ],
+      "option": [],
+      "index": 15,
+      "pricePromo": 54,
+      "timeStart": 0,
+      "effectiveStatus": "enable"
+    },
+    {
+      "id": 16,
+      "isOutOfTime": false,
+      "timeStart": 0,
+      "image": [
+        "https://i.ibb.co/cKNw5qrx/nuoc-dua-06.jpg",
+        "https://i.ibb.co/cKNw5qrx/nuoc-dua-06.jpg",
+        "https://i.ibb.co/cKNw5qrx/nuoc-dua-06.jpg"
+      ],
+      "index": 16,
+      "note": "ngon lắm",
+      "type": "đồ uống",
+      "img": "https://i.ibb.co/cKNw5qrx/nuoc-dua-06.jpg",
+      "timeEnd": 24,
+      "status": "enable",
+      "effectiveStatus": "enable",
+      "name": "Nước dưa",
+      "log": [],
+      "pricePromo": 55,
+      "option": [],
+      "orderCount": 0,
+      "shopId": 205,
+      "priceNormal": 65
+    },
+    {
+      "id": 17,
+      "note": "ngon lắm",
+      "img": "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg",
+      "orderCount": 0,
+      "name": "Sữa chua",
+      "log": [],
+      "shopId": 206,
+      "option": [
+        {
+          "status": true,
+          "price": 9,
+          "isDefault": true,
+          "index": 4,
+          "name": "size L"
+        },
+        {
+          "index": 2,
+          "status": true,
+          "price": 8,
+          "name": "trân châu",
+          "isDefault": false
+        },
+        {
+          "index": 3,
+          "status": true,
+          "price": 8,
+          "isDefault": false,
+          "name": "thạch"
+        }
+      ],
+      "status": "enable",
+      "timeStart": "00",
+      "isOutOfTime": false,
+      "type": "đồ uống",
+      "pricePromo": 56,
+      "effectiveStatus": "enable",
+      "index": 17,
+      "priceNormal": 66,
+      "image": [
+        "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg",
+        "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg",
+        "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg"
+      ],
+      "timeEnd": "24"
+    },
+    {
+      "id": 10,
+      "image": [
+        "https://i.ibb.co/TqR4fk5m/tra-vai-01.jpg",
+        "https://i.ibb.co/TqR4fk5m/tra-vai-01.jpg",
+        "https://i.ibb.co/TqR4fk5m/tra-vai-01.jpg"
+      ],
+      "option": [],
+      "name": "Trà vải",
+      "shopId": 208,
+      "index": 10,
+      "priceNormal": 59,
+      "status": "enable",
+      "type": "đồ uống",
+      "isOutOfTime": true,
+      "pricePromo": 49,
+      "effectiveStatus": "disable",
+      "log": [],
+      "orderCount": 0,
+      "timeStart": 0,
+      "img": "https://i.ibb.co/TqR4fk5m/tra-vai-01.jpg",
+      "timeEnd": 7,
+      "note": "ngon lắm"
+    }
+  ],
+  "goods": [
+    {
+      "id": 18,
+      "img": "https://i.imgur.com/xbooKoM.jpg",
+      "type": 4,
+      "index": 18,
+      "shopId": 208,
+      "status": "enable",
+      "priceNormal": 67,
+      "name": "Thịt heo",
+      "orderCount": 0,
+      "pricePromo": 57,
+      "image": [
+        "https://i.imgur.com/xbooKoM.jpg",
+        "https://i.imgur.com/xbooKoM.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "note": "ngonnnn lắm",
+      "timeEnd": 24,
+      "log": [],
+      "timeStart": 0
+    },
+    {
+      "id": 19,
+      "status": "enable",
+      "timeStart": 0,
+      "shopId": 206,
+      "img": "https://i.imgur.com/LP6d6s4.jpg",
+      "orderCount": 0,
+      "log": [],
+      "type": 4,
+      "image": [
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "name": "Thịt bò",
+      "pricePromo": 58,
+      "timeEnd": 25,
+      "index": 19,
+      "priceNormal": 68,
+      "note": "ngon lắm"
+    },
+    {
+      "id": 20,
+      "type": 4,
+      "name": "Thịt trâu",
+      "log": [],
+      "img": "https://i.imgur.com/VRsmTOE.jpg ",
+      "image": [
+        "https://i.imgur.com/VRsmTOE.jpg ",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "timeStart": 0,
+      "status": "enable",
+      "orderCount": 0,
+      "priceNormal": 69,
+      "index": 20,
+      "pricePromo": 59,
+      "note": "ngon lắm",
+      "shopId": 206,
+      "timeEnd": 26
+    },
+    {
+      "id": 21,
+      "shopId": 207,
+      "log": [],
+      "note": "ngon lắm",
+      "name": "Thịt lơn",
+      "timeEnd": 27,
+      "orderCount": 0,
+      "timeStart": 0,
+      "type": 4,
+      "index": 21,
+      "img": "https://i.imgur.com/xbooKoM.jpg",
+      "status": "enable",
+      "priceNormal": 70,
+      "pricePromo": 60,
+      "image": [
+        "https://i.imgur.com/xbooKoM.jpg",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Cá chép",
+      "type": 5,
+      "pricePromo": 61,
+      "image": [
+        "https://i.imgur.com/1V9qydj.jpg",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "status": "enable",
+      "shopId": 205,
+      "timeStart": 0,
+      "priceNormal": 71,
+      "img": "https://i.imgur.com/1V9qydj.jpg",
+      "timeEnd": 28,
+      "log": [],
+      "orderCount": 0,
+      "index": 22,
+      "note": "ngon lắm"
+    },
+    {
+      "id": 23,
+      "index": 23,
+      "orderCount": 0,
+      "image": [
+        "https://i.imgur.com/cVIyKUp.jpg ",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "timeStart": 0,
+      "timeEnd": 29,
+      "name": "Cá mè",
+      "shopId": 206,
+      "img": "https://i.imgur.com/cVIyKUp.jpg ",
+      "priceNormal": 72,
+      "pricePromo": 62,
+      "type": 5,
+      "status": "enable",
+      "log": [],
+      "note": "ngon lắm"
+    },
+    {
+      "id": 24,
+      "pricePromo": 63,
+      "shopId": 208,
+      "index": 24,
+      "note": "ngon lắm",
+      "image": [
+        "https://i.imgur.com/gY05uXH.jpg ",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "type": 3,
+      "priceNormal": 73,
+      "timeEnd": 30,
+      "orderCount": 0,
+      "status": "enable",
+      "img": "https://i.imgur.com/gY05uXH.jpg ",
+      "log": [],
+      "timeStart": 0,
+      "name": "Rau mùng tơi"
+    },
+    {
+      "id": 25,
+      "name": "Rau đay",
+      "orderCount": 0,
+      "timeStart": 0,
+      "timeEnd": 31,
+      "pricePromo": 64,
+      "priceNormal": 74,
+      "image": [
+        "https://i.imgur.com/vFZJbhL.jpg ",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "log": [],
+      "index": 25,
+      "note": "ngon lắm",
+      "type": 3,
+      "shopId": 205,
+      "status": "enable",
+      "img": "https://i.imgur.com/vFZJbhL.jpg "
+    },
+    {
+      "id": 26,
+      "log": [],
+      "type": 3,
+      "image": [
+        "https://i.imgur.com/xbooKoM.jpg",
+        "https://i.imgur.com/xbooKoM.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "index": 26,
+      "img": "https://i.imgur.com/xbooKoM.jpg",
+      "status": "enable",
+      "shopId": 206,
+      "timeEnd": 32,
+      "orderCount": 0,
+      "priceNormal": 75,
+      "timeStart": 0,
+      "name": "Hành lá",
+      "pricePromo": 65,
+      "note": "ngon lắm"
+    },
+    {
+      "id": 27,
+      "image": [
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "log": [],
+      "status": "enable",
+      "shopId": 207,
+      "index": 27,
+      "img": "https://i.imgur.com/LP6d6s4.jpg",
+      "name": "Cái dún",
+      "timeEnd": 33,
+      "type": 3,
+      "pricePromo": 66,
+      "timeStart": 0,
+      "note": "ngon lắm",
+      "priceNormal": 76,
+      "orderCount": 0
+    },
+    {
+      "id": 28,
+      "note": "ngon lắm",
+      "orderCount": 0,
+      "priceNormal": 77,
+      "timeEnd": 34,
+      "index": 28,
+      "type": 3,
+      "log": [],
+      "status": "enable",
+      "image": [
+        "https://i.imgur.com/VRsmTOE.jpg ",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "shopId": 208,
+      "pricePromo": 67,
+      "img": "https://i.imgur.com/VRsmTOE.jpg ",
+      "name": "Rau cải",
+      "timeStart": 0
+    },
+    {
+      "id": 29,
+      "timeEnd": 35,
+      "index": 29,
+      "log": [],
+      "type": 3,
+      "timeStart": 0,
+      "img": "https://i.imgur.com/xbooKoM.jpg",
+      "image": [
+        "https://i.imgur.com/xbooKoM.jpg",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "priceNormal": 78,
+      "pricePromo": 68,
+      "name": "Rau muống",
+      "shopId": 205,
+      "status": "enable",
+      "orderCount": 0,
+      "note": "ngon lắm"
+    },
+    {
+      "id": 30,
+      "name": "Rau tần ô",
+      "image": [
+        "https://i.imgur.com/1V9qydj.jpg",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "timeEnd": 36,
+      "shopId": 206,
+      "pricePromo": 69,
+      "img": "https://i.imgur.com/1V9qydj.jpg",
+      "log": [],
+      "status": "enable",
+      "note": "ngon lắm",
+      "timeStart": 0,
+      "index": 30,
+      "type": 3,
+      "orderCount": 0,
+      "priceNormal": 79
+    },
+    {
+      "id": 31,
+      "timeEnd": 37,
+      "shopId": 207,
+      "orderCount": 0,
+      "timeStart": 0,
+      "image": [
+        "https://i.imgur.com/cVIyKUp.jpg ",
+        "https://i.imgur.com/LP6d6s4.jpg",
+        "https://i.imgur.com/xbooKoM.jpg"
+      ],
+      "img": "https://i.imgur.com/cVIyKUp.jpg ",
+      "name": "Rau thơm",
+      "type": 3,
+      "note": "ngon lắm",
+      "index": 31,
+      "log": [],
+      "pricePromo": 70,
+      "priceNormal": 80,
+      "status": "enable"
+    }
+  ],
+  "services": [
+    {
+      "id": 1,
+      "moneyShare": 21,
+      "shopId": 209,
+      "pricePromo": 40,
+      "image": "https://i.ibb.co/tPkBjm4r/Gemini-Generated-Image-xwfh9gxwfh9gxwfh.png",
+      "note": "ngon lắm nhé",
+      "priceNormal": 50,
+      "log": [],
+      "index": 1,
+      "name": "Dọn vệ sinh1",
+      "status": "enable"
+    },
+    {
+      "id": 2,
+      "priceNormal": 51,
+      "pricePromo": 41,
+      "shopId": 206,
+      "image": "https://i.ibb.co/tPkBjm4r/Gemini-Generated-Image-xwfh9gxwfh9gxwfh.png",
+      "log": [],
+      "status": "enable",
+      "note": "ngon lắm",
+      "index": 5,
+      "name": "Thay lõi lọc nước",
+      "moneyShare": 21
+    },
+    {
+      "id": 3,
+      "shopId": 208,
+      "image": "https://i.ibb.co/nMJhqV4q/Gemini-Generated-Image-wkhponwkhponwkhp.png",
+      "log": [],
+      "name": "Vệ sinh điều hoà",
+      "moneyShare": 21,
+      "index": 3,
+      "status": "enable",
+      "priceNormal": 52,
+      "pricePromo": 42,
+      "note": "ngon lắm"
+    },
+    {
+      "id": 4,
+      "note": "ngon lắm",
+      "priceNormal": 53,
+      "pricePromo": 43,
+      "log": [],
+      "name": "Sửa điện",
+      "shopId": 207,
+      "index": 4,
+      "image": "https://i.ibb.co/2YC3fNQq/Gemini-Generated-Image-tn57bptn57bptn57.png",
+      "status": "enable",
+      "moneyShare": 21
+    },
+    {
+      "id": 5,
+      "image": "https://i.ibb.co/CKTVShxM/Gemini-Generated-Image-d44498d44498d444.png",
+      "name": "Sửa nước",
+      "index": 5,
+      "pricePromo": 44,
+      "log": [],
+      "moneyShare": 21,
+      "status": "enable",
+      "note": "ngon lắm",
+      "shopId": 2,
+      "priceNormal": 54
+    },
+    {
+      "id": 6,
+      "shopId": 4,
+      "status": "enable",
+      "name": "Vệ sinh Sofa",
+      "pricePromo": 45,
+      "priceNormal": 55,
+      "image": "https://i.ibb.co/HLVsvtW5/Gemini-Generated-Image-bn4w2rbn4w2rbn4w.png",
+      "moneyShare": 21,
+      "log": [],
+      "note": "ngon lắm",
+      "index": 6
+    }
+  ],
+  "users": [
+    {
+      "id": 205,
+      "address": "B06.11 Vivaf",
+      "password": "Kien1234",
+      "status": "enable",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "mustCheckIn": "disable",
+      "expoToken": "",
+      "role": "admin",
+      "name": "Nguyễn Trung Kiễn",
+      "checkInDate": "",
+      "uid": "MHDJtNjC6HT8cWTVWphZawwWDF02",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "point": 10,
+      "shopName": "ShopAdmin",
+      "index": 1,
+      "log": [],
+      "phone": "0931837176"
+    },
+    {
+      "id": 206,
+      "mustCheckIn": "disable",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "point": "",
+      "status": "enable",
+      "password": "Kien1234",
+      "name": "Nguyễn Trường Giang",
+      "expoToken": "",
+      "address": "B06.10 Viva",
+      "log": [],
+      "index": 2,
+      "uid": "jloThBgL9PNRvkYhwLdAlZwvPBq1",
+      "shopName": "Vinmart",
+      "role": "chủ shop",
+      "checkInDate": "",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "phone": "0838187343"
+    },
+    {
+      "id": 207,
+      "expoToken": "",
+      "checkInDate": "",
+      "shopName": "Bách Hoá Xanh",
+      "index": 3,
+      "phone": "0385756271",
+      "name": "Nguyễn Thị Nữ",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "point": "",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "uid": "IoFG4ffykEXhDnjLdEghmbCzm313",
+      "mustCheckIn": "disable",
+      "log": [],
+      "password": "Kien1234",
+      "address": "B09.11 Viva",
+      "role": "chủ shop",
+      "status": "enable"
+    },
+    {
+      "id": 208,
+      "checkInDate": "",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "shopName": "GrabFood",
+      "address": "B06.11 Viva",
+      "expoToken": "",
+      "point": "",
+      "status": "enable",
+      "name": "Nguyễn Thị Diễm Phượng",
+      "log": [],
+      "mustCheckIn": "disable",
+      "uid": "2f3P13U6kPYR3PeiOFXryIRPqkA3",
+      "phone": "0979934882",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "password": "Kien1234",
+      "index": 4,
+      "role": "chủ shop"
+    },
+    {
+      "id": 209,
+      "password": "Kien1234",
+      "status": "enable",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "point": "",
+      "phone": "0988276559",
+      "log": [],
+      "name": "Nguyễn Văn Dũng",
+      "address": "B05.11 Viva",
+      "mustCheckIn": "disable",
+      "shopName": "NowFood",
+      "uid": "BULNFMTrn3gfM4t4JH3rO6RwTkk2",
+      "expoToken": "Kien1234",
+      "index": 5,
+      "role": "chủ shop",
+      "checkInDate": "",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg"
+    },
+    {
+      "id": 210,
+      "address": "Viva B00.11",
+      "point": "",
+      "uid": "u1td2foRS7SO5fqQC8sxPaIaSAf1",
+      "expoToken": "",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "shopName": "",
+      "mustCheckIn": "disable",
+      "role": "manager",
+      "name": "Nguyễn Văn Shipper01",
+      "phone": "0988276550",
+      "index": 6,
+      "checkInDate": "",
+      "password": "Kien1234",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "log": [],
+      "status": "enable"
+    },
+    {
+      "id": 211,
+      "shopName": "",
+      "phone": "0988276551",
+      "point": "",
+      "status": "enable",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "index": 7,
+      "password": "Kien1234",
+      "role": "manager",
+      "address": "B09.11 Viva",
+      "log": [],
+      "expoToken": "",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "mustCheckIn": "disable",
+      "uid": "IESDPnM5Eacj6uA9GL92icQsUoo1",
+      "name": "Nguyễn Văn User02",
+      "checkInDate": ""
+    },
+    {
+      "id": 212,
+      "address": "B08.77 Viva",
+      "password": "Kien1234",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "point": "",
+      "log": [],
+      "expoToken": "",
+      "index": 8,
+      "mustCheckIn": "disable",
+      "checkInDate": "",
+      "name": "Nguyễn Văn 01",
+      "uid": "XA92hpRKNBRjE4H9PWoX6e0AJaP2",
+      "shopName": "",
+      "status": "enable",
+      "role": "shipper",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "phone": "0988276552"
+    },
+    {
+      "id": 213,
+      "uid": "sfctZkynRXO5sjJRMefCoQYSNf93",
+      "log": [],
+      "status": "enable",
+      "mustCheckIn": "disable",
+      "point": "",
+      "phone": "0931837170",
+      "checkInDate": "",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "shopName": "",
+      "role": "user",
+      "address": "Viva Hcm test",
+      "password": "Kien1234",
+      "index": 9,
+      "expoToken": "",
+      "name": "Nguyễn Văn A1",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg"
+    },
+    {
+      "id": 214,
+      "role": "user",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "expoToken": "",
+      "shopName": "",
+      "checkInDate": "",
+      "name": "hahja",
+      "phone": "0931837171",
+      "index": 10,
+      "log": [],
+      "password": "Kien1234",
+      "uid": "hoygQq70tfTZ85OtkR7XblRfi5A2",
+      "status": "enable",
+      "address": "jdnnf",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "mustCheckIn": "disable",
+      "point": ""
+    },
+    {
+      "id": 215,
+      "index": 0,
+      "password": "Kien1234",
+      "uid": "FfdVGmsP8lUrfHU1xOcsaw4sn7L2",
+      "mustCheckIn": "disable",
+      "shopName": "",
+      "checkInDate": "",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "log": [],
+      "role": "user",
+      "expoToken": "",
+      "address": "hfnkskjc",
+      "phone": "0988998899",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "name": "abcd",
+      "point": "",
+      "status": "enable"
+    },
+    {
+      "id": 216,
+      "phone": 16696355,
+      "point": 0,
+      "uid": "NB4WB2dBxtSOfaWKZFgNSErTst72",
+      "role": "user",
+      "imgShop": "https://i.imgur.com/Hr91MVM.jpg",
+      "imgShopSquare": "https://i.imgur.com/Aowhb8W.jpg",
+      "address": "asfasdfasdfasdf",
+      "status": "enable",
+      "log": [],
+      "name": "name",
+      "mustCheckIn": "disable",
+      "checkInDate": "",
+      "password": "Kien1234",
+      "shopName": "",
+      "expoToken": "",
+      "index": 0
+    }
+  ],
+  "foodOrders": [
+    {
+      "id": "GPxByu02gIP6Q5jelmJc",
+      "discount": 0,
+      "userName": "Nguyễn Trung Kiễn",
+      "status": "pending",
+      "isGuest": false,
+      "createdAt": "2026-01-23T09:24:30.251Z",
+      "shipType": "normal",
+      "logs": [
+        {
+          "time": "2026-01-23T09:24:30.251Z",
+          "status": "pending",
+          "content": "Thành viên đặt hàng"
+        }
+      ],
+      "userId": 205,
+      "totalFood": 56,
+      "finalTotal": 67,
+      "extraStepFee": 0,
+      "baseShip": 11,
+      "shopCount": 1,
+      "items": [
+        {
+          "id": 17,
+          "img": "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg",
+          "orderCount": 0,
+          "timeEnd": 24,
+          "priceNormal": 66,
+          "shopName": "Vinmart",
+          "name": "Sữa chua",
+          "note": "",
+          "effectiveStatus": "enable",
+          "pricePromo": 56,
+          "shopId": 206,
+          "index": 17,
+          "option": [
+            {
+              "price": 8,
+              "name": "size L",
+              "status": true,
+              "index": 1
+            },
+            {
+              "price": 8,
+              "name": "trân châu",
+              "index": 2,
+              "status": true
+            },
+            {
+              "index": 3,
+              "price": 8,
+              "name": "thạch",
+              "status": true
+            }
+          ],
+          "selectedOptions": [],
+          "log": [],
+          "quantity": 1,
+          "extraPrice": 0,
+          "image": [
+            "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg",
+            "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg",
+            "https://i.ibb.co/9kHVzbh2/sua-chua-07.jpg"
+          ],
+          "status": "enable",
+          "isOutOfTime": false,
+          "type": "đồ uống",
+          "timeStart": 0
+        }
+      ],
+      "paymentMethod": "COD",
+      "userPhone": "0931837176",
+      "promoCode": "",
+      "address": "B06.11 Vivaf",
+      "orderId": "FOOD-1769160270251"
+    },
+    {
+      "id": "cxh6TkTcZ5fL6T45b7R3",
+      "discount": 10,
+      "logs": [
+        {
+          "status": "pending",
+          "content": "Khách vãng lai đặt hàng",
+          "time": "2026-01-20T03:05:51.032Z"
+        },
+        {
+          "status": "processing",
+          "content": "Shipper đã nhận đơn",
+          "time": "2026-01-20T03:09:34.675Z"
+        },
+        {
+          "status": "completed",
+          "content": "Shipper đã giao hàng thành công",
+          "time": "2026-01-20T03:09:38.238Z"
+        }
+      ],
+      "totalFood": 44,
+      "userId": "G-MKLVTXK4-75F88",
+      "createdAt": "2026-01-20T03:05:51.032Z",
+      "status": "completed",
+      "paymentMethod": "COD",
+      "promoCode": "FREESHIP02",
+      "isGuest": true,
+      "userName": "sdffsd",
+      "finalTotal": 45,
+      "shipperId": 212,
+      "address": "czvbzfsdf",
+      "shipType": "normal",
+      "userPhone": "342546543",
+      "orderId": "FOOD-1768878351032",
+      "items": [
+        {
+          "orderCount": 0,
+          "shopId": 207,
+          "timeStart": 0,
+          "priceNormal": 54,
+          "image": [
+            "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg",
+            "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg",
+            "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg"
+          ],
+          "id": 5,
+          "timeEnd": 24,
+          "log": [],
+          "index": 5,
+          "note": "",
+          "name": "Trân châu đường đen",
+          "quantity": 1,
+          "pricePromo": 44,
+          "isOutOfTime": false,
+          "type": 2,
+          "option": [],
+          "status": "enable",
+          "img": "https://i.ibb.co/6cFvLKsL/tran-chau-08.jpg",
+          "effectiveStatus": "enable"
+        }
+      ],
+      "baseShip": 11
+    },
+    {
+      "id": "douykJgKwyN7psCW2sNF",
+      "discount": 10,
+      "status": "cancelled",
+      "userName": "Nguyễn Trung Kiễn",
+      "isGuest": false,
+      "createdAt": "2026-01-20T14:54:53.337Z",
+      "shipType": "normal",
+      "logs": [
+        {
+          "content": "Thành viên đặt hàng",
+          "status": "pending",
+          "time": "2026-01-20T14:54:53.337Z"
+        },
+        {
+          "time": "2026-01-20T14:55:06.085Z",
+          "status": "cancelled",
+          "content": "Người dùng đã hủy đơn hàng"
+        }
+      ],
+      "userId": 205,
+      "totalFood": 44,
+      "finalTotal": 45,
+      "extraStepFee": 0,
+      "baseShip": 11,
+      "shopCount": 1,
+      "items": [
+        {
+          "id": 3,
+          "img": "https://i.ibb.co/ccRzrH91/com-suon-12.jpg",
+          "orderCount": 0,
+          "timeEnd": 24,
+          "shopName": "Vinmart",
+          "priceNormal": 52,
+          "name": "Cơm sườn",
+          "note": "",
+          "pricePromo": 44,
+          "effectiveStatus": "enable",
+          "shopId": 206,
+          "index": 3,
+          "option": [],
+          "selectedOptions": [],
+          "log": [],
+          "quantity": 1,
+          "extraPrice": 0,
+          "status": "enable",
+          "image": [
+            "https://i.ibb.co/ccRzrH91/com-suon-12.jpg",
+            "https://i.ibb.co/ccRzrH91/com-suon-12.jpg",
+            "https://i.ibb.co/ccRzrH91/com-suon-12.jpg"
+          ],
+          "isOutOfTime": false,
+          "type": "đồ ăn",
+          "timeStart": 0
+        }
+      ],
+      "paymentMethod": "COD",
+      "userPhone": "0931837176",
+      "promoCode": "FREESHIP02",
+      "address": "B06.11 Vivaf",
+      "orderId": "FOOD-1768920893336"
+    },
+    {
+      "id": "ushoD8O4ztsrw19EZwn4",
+      "shipType": "normal",
+      "finalTotal": 100,
+      "discount": 5,
+      "shopIds": [
+        207,
+        208
+      ],
+      "userId": 213,
+      "createdAt": "2026-01-19T09:50:03.611Z",
+      "userPhone": "0931837170",
+      "totalFood": 89,
+      "extraStepFee": 5,
+      "status": "completed",
+      "address": "Viva Hcm test",
+      "userName": "Nguyễn Văn A1",
+      "logs": [
+        {
+          "time": "2026-01-19T09:50:03.611Z",
+          "content": "Khách hàng đã gửi đơn hàng",
+          "status": "pending"
+        },
+        {
+          "time": "2026-01-19T09:51:42.086Z",
+          "content": "Shipper đã nhận đơn",
+          "status": "processing"
+        },
+        {
+          "content": "Shipper đã giao hàng thành công",
+          "time": "2026-01-19T09:51:48.692Z",
+          "status": "completed"
+        },
+        {
+          "time": "2026-01-19T11:55:00.097Z",
+          "content": "Shipper đã nhận đơn",
+          "status": "processing"
+        },
+        {
+          "status": "completed",
+          "time": "2026-01-19T11:55:04.260Z",
+          "content": "Shipper đã giao hàng thành công"
+        }
+      ],
+      "orderId": "FOOD-1768816203611",
+      "paymentMethod": "COD",
+      "items": [
+        {
+          "orderCount": 1,
+          "option": [],
+          "status": "enable",
+          "index": 1,
+          "isOutOfTime": false,
+          "id": 1,
+          "image": [
+            "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+            "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+            "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg"
+          ],
+          "timeEnd": 24,
+          "timeStart": 0,
+          "pricePromo": 44,
+          "type": "đồ ăn",
+          "priceNormal": 44,
+          "img": "https://i.ibb.co/vvvcpkpF/com-tam-11.jpg",
+          "effectiveStatus": "enable",
+          "note": "",
+          "name": "Cơm tấm 01",
+          "log": [],
+          "shopId": 207,
+          "quantity": 1
+        },
+        {
+          "shopId": 208,
+          "image": [
+            "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg",
+            "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg",
+            "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg"
+          ],
+          "log": [],
+          "type": "đồ ăn",
+          "note": "",
+          "id": 6,
+          "isOutOfTime": false,
+          "index": 6,
+          "pricePromo": 45,
+          "orderCount": 0,
+          "quantity": 1,
+          "option": [],
+          "timeEnd": 24,
+          "name": "Cơm gà Hải Nam",
+          "timeStart": 0,
+          "priceNormal": 55,
+          "effectiveStatus": "enable",
+          "img": "https://i.ibb.co/8gjFzbtH/com-ga-hai-nam-15.jpg",
+          "status": "enable"
+        }
+      ],
+      "shipperId": 212,
+      "baseShip": 11,
+      "promoCode": "FREESHIP01"
+    }
+  ],
+  "goodOrders": [
+    {
+      "id": 1664191528900,
+      "adminNote": "",
+      "status": "pendding",
+      "log": [],
+      "orderItems": [
+        {
+          "log": [],
+          "id": 31,
+          "type": 3,
+          "status": "enable",
+          "shopId": 207,
+          "cartType": "good",
+          "orderCount": 0,
+          "count": 1,
+          "pricePromo": 70,
+          "image": [
+            "https://i.imgur.com/cVIyKUp.jpg ",
+            "https://i.imgur.com/LP6d6s4.jpg",
+            "https://i.imgur.com/xbooKoM.jpg"
+          ],
+          "timeStart": 0,
+          "timeEnd": 37,
+          "index": 31,
+          "priceNormal": 80,
+          "name": "Rau thơm",
+          "note": "ngon lắm",
+          "userNote": "note from ..."
+        }
+      ],
+      "managerId": 0,
+      "userId": 213,
+      "shopId": 207,
+      "shipperId": 0,
+      "promo": null,
+      "service": null,
+      "timeCreate": "Mon Sep 26 18:25:28 2022",
+      "value": {
+        "items": 70,
+        "promo": 0,
+        "ship": 0,
+        "service": 0,
+        "total": 70
+      },
+      "type": "good"
+    },
+    {
+      "id": 1664191894743,
+      "service": null,
+      "managerId": 0,
+      "shipperId": 0,
+      "shopId": 207,
+      "log": [],
+      "timeCreate": "Mon Sep 26 18:31:34 2022",
+      "status": "pendding",
+      "orderItems": [
+        {
+          "id": 31,
+          "status": "enable",
+          "userNote": "note from ...",
+          "cartType": "good",
+          "orderCount": 0,
+          "shopId": 207,
+          "image": [
+            "https://i.imgur.com/cVIyKUp.jpg ",
+            "https://i.imgur.com/LP6d6s4.jpg",
+            "https://i.imgur.com/xbooKoM.jpg"
+          ],
+          "note": "ngon lắm",
+          "timeEnd": 37,
+          "name": "Rau thơm",
+          "type": 3,
+          "index": 31,
+          "priceNormal": 80,
+          "log": [],
+          "pricePromo": 70,
+          "timeStart": 0,
+          "count": 1
+        }
+      ],
+      "value": {
+        "promo": 0,
+        "items": 70,
+        "total": 70,
+        "service": 0,
+        "ship": 0
+      },
+      "userId": 213,
+      "type": "good",
+      "adminNote": "",
+      "promo": null
+    },
+    {
+      "id": 1665718146041,
+      "managerId": 0,
+      "shopId": 207,
+      "timeCreate": "Fri Oct 14 10:29:06 2022",
+      "shipperId": 0,
+      "adminNote": "",
+      "userId": 213,
+      "type": "good",
+      "value": {
+        "items": 66,
+        "promo": 0,
+        "service": 0,
+        "ship": 0,
+        "total": 66
+      },
+      "log": [],
+      "service": null,
+      "status": "pendding",
+      "orderItems": [
+        {
+          "orderCount": 0,
+          "note": "ngon lắm",
+          "count": 1,
+          "priceNormal": 76,
+          "timeEnd": 33,
+          "index": 27,
+          "id": 27,
+          "type": 3,
+          "status": "enable",
+          "log": [],
+          "userNote": "note from ...Nguyen Trung Kien - Nguyen Truong Giang -Nguyen Thi Nu",
+          "shopId": 207,
+          "image": [
+            "https://i.imgur.com/LP6d6s4.jpg",
+            "https://i.imgur.com/LP6d6s4.jpg",
+            "https://i.imgur.com/xbooKoM.jpg"
+          ],
+          "pricePromo": 66,
+          "name": "Cái dún",
+          "timeStart": 0,
+          "cartType": "good"
+        }
+      ],
+      "promo": null
+    },
+    {
+      "id": 1665718146055,
+      "value": {
+        "promo": 0,
+        "total": 67,
+        "items": 67,
+        "service": 0,
+        "ship": 0
+      },
+      "service": null,
+      "type": "good",
+      "managerId": 0,
+      "orderItems": [
+        {
+          "pricePromo": 67,
+          "priceNormal": 77,
+          "status": "enable",
+          "name": "Rau cải",
+          "id": 28,
+          "userNote": "note from ...Nguyen Trung Kien - Nguyen Truong Giang -Nguyen Thi Nu",
+          "log": [],
+          "index": 28,
+          "note": "ngon lắm",
+          "count": 1,
+          "image": [
+            "https://i.imgur.com/VRsmTOE.jpg ",
+            "https://i.imgur.com/LP6d6s4.jpg",
+            "https://i.imgur.com/xbooKoM.jpg"
+          ],
+          "orderCount": 0,
+          "timeEnd": 34,
+          "timeStart": 0,
+          "type": 3,
+          "shopId": 208,
+          "cartType": "good"
+        }
+      ],
+      "adminNote": "",
+      "userId": 213,
+      "shopId": 208,
+      "promo": null,
+      "log": [],
+      "status": "pendding",
+      "shipperId": 0,
+      "timeCreate": "Fri Oct 14 10:29:06 2022"
+    }
+  ],
+  "serviceOrders": [
+    {
+      "id": "dW54XJ0hOhJCkZ7JoTKX",
+      "userId": 205,
+      "note": "",
+      "userAddress": "B06.11 Vivaf",
+      "orderId": "1769245570122",
+      "price": 40000,
+      "userPhone": "0931837176",
+      "createdAt": "2026-01-24T09:06:10.122Z",
+      "shopId": 209,
+      "serviceName": "Dọn vệ sinh1",
+      "serviceId": 1,
+      "logs": [
+        {
+          "status": "pending",
+          "time": "2026-01-24T09:06:10.122Z",
+          "content": "Yêu cầu dịch vụ \"Dọn vệ sinh1\" đã được tạo bởi Nguyễn Trung Kiễn."
+        }
+      ],
+      "status": "pending",
+      "shopName": "NowFood",
+      "userName": "Nguyễn Trung Kiễn"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "1C6Dkq1FOHpezRFeIwej",
+      "amount": 6.9,
+      "performedBy": "admin",
+      "createdAt": "2026-01-20T06:47:23.326Z",
+      "desc": "Admin trả tiền bù (Voucher/Ship)",
+      "type": "PAYMENT",
+      "userName": "Nguyễn Văn 01",
+      "userId": 212
+    },
+    {
+      "id": "RYlQrStWab6ETYo0BSyw",
+      "userId": 212,
+      "desc": "Phí ship đơn #FOOD-1768816203611",
+      "createdAt": "2026-01-19T11:55:04.384Z",
+      "amount": -0.2,
+      "orderId": "FOOD-1768816203611",
+      "performedBy": "system",
+      "type": "DEBT",
+      "userName": "Nguyễn Văn 01"
+    },
+    {
+      "id": "wCVBI0yCFaWyu9JcHwh6",
+      "userName": "Nguyễn Văn 01",
+      "userId": 212,
+      "performedBy": "system",
+      "desc": "Phí ship đơn #FOOD-1768878351032",
+      "createdAt": "2026-01-20T03:09:38.312Z",
+      "amount": -6.7,
+      "type": "DEBT",
+      "orderId": "FOOD-1768878351032"
+    }
+  ]
+}

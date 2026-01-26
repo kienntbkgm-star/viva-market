@@ -1,0 +1,6 @@
+npx expo export --platform web
+netlify deploy --dir=dist --prod
+npx repomix
+
+
+

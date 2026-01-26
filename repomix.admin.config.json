@@ -1,0 +1,11 @@
+{
+  "output": {
+    "filePath": "project-admin.txt"
+  },
+  "include": [
+    "app/admin/**/*"
+  ],
+  "ignore": {
+    "customPatterns": ["**/*.ini"]
+  }
+}
