@@ -163,32 +163,3 @@ export default function NotificationProcess() {
 
     return null;
 }
-
-// 4. HELPER: Gửi notification đến nhiều người cùng lúc
-export async function sendNotificationToMultiple(title, body, usersList) {
-    if (!usersList || usersList.length === 0) {
-        console.log("⚠️ Danh sách người nhận trống");
-        return;
-    }
-
-    console.log(`📢 Gửi notification "${title}" đến ${usersList.length} người`);
-    
-    const validUsers = usersList.filter(u => u && u.expoToken);
-    if (validUsers.length === 0) {
-        console.log("⚠️ Không có user nào có token");
-        return;
-    }
-
-    const promises = validUsers.map(user => {
-        console.log(`  📲 Gửi đến ${user.name || user.id}...`);
-        return sendNotification(title, body, user.expoToken)
-            .catch(error => {
-                console.error(`  ❌ Lỗi gửi đến ${user.name}:`, error.message);
-                return null;
-            });
-    });
-
-    const results = await Promise.allSettled(promises);
-    const successful = results.filter(r => r.status === 'fulfilled').length;
-    console.log(`✅ Gửi thành công ${successful}/${validUsers.length}`);
-}

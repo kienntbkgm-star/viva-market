@@ -16,6 +16,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { sendNotificationToMultiple } from '../src/components/Notification';
 import ResidentOrderModal from '../src/components/ResidentOrderModal';
 import { db } from '../src/services/firebase';
 import { useAppStore } from '../src/store/useAppStore';
@@ -453,6 +454,31 @@ export default function ItemDetailScreen() {
       
       // Lưu vào Firebase
       await addDoc(collection(db, 'foodOrders'), newOrder);
+
+      // 📢 GỬI NOTIFICATION: Khách đặt đơn -> Shipper, Admin, Chủ shop
+      console.log('🔔 Gửi notification: Khách đặt đơn mới');
+      try {
+        const shippers = users.filter(u => u.role === 'shipper');
+        const admins = users.filter(u => u.role === 'admin');
+        const shopOwner = users.find(u => String(u.id) === String(shopData.id || orderItems[0]?.shopId));
+
+        const recipients = [
+          ...shippers,
+          ...admins,
+          ...(shopOwner ? [shopOwner] : [])
+        ].filter(u => u.expoToken);
+
+        if (recipients.length > 0) {
+          const itemNames = orderItems.map(item => item.name).join(', ');
+          const notifTitle = '🛒 Đơn hàng mới';
+          const notifBody = `Khách ${newOrder.userName} đặt: ${itemNames} - ${(newOrder.items.reduce((sum, item) => sum + (item.quantity * (item.pricePromo || item.priceNormal)), 0) * 1000).toLocaleString('vi-VN')}đ`;
+
+          await sendNotificationToMultiple(notifTitle, notifBody, recipients);
+        }
+      } catch (notifError) {
+        console.error('⚠️ Lỗi gửi notification nhưng đơn đã được tạo:', notifError);
+        // Không dừng flow, đơn đã được tạo rồi
+      }
       
       // Hiển thị thành công
       setTimeout(() => {
