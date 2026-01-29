@@ -1,15 +1,16 @@
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import bcryptjs from 'bcryptjs';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView, Platform,
-  SafeAreaView, ScrollView, StyleSheet, Text, TextInput,
-  TouchableOpacity, View
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView, Platform,
+    SafeAreaView, ScrollView, StyleSheet, Text, TextInput,
+    TouchableOpacity, View
 } from 'react-native';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
@@ -39,7 +40,12 @@ export default function EditUserScreen() {
     shopName: '',
     imgShop: '',
     imgShopSquare: '',
-    expoToken: ''
+    expoToken: '',
+    isReady: false,
+    readyDate: '',
+    isResidentShop: false,
+    createdAt: '',
+    log: []
   });
 
   useEffect(() => {
@@ -118,6 +124,32 @@ export default function EditUserScreen() {
     }
   };
 
+  const handleResetPassword = () => {
+    Alert.alert(
+      "Reset Password",
+      `Bạn chắc chắn muốn reset password của ${formData.name} về "123456"?`,
+      [
+        { text: "Hủy", onPress: () => {}, style: "cancel" },
+        {
+          text: "Xác nhận",
+          onPress: async () => {
+            try {
+              const hashedPassword = bcryptjs.hashSync('123456', 10);
+              const userRef = doc(db, 'users', id.toString());
+              await updateDoc(userRef, { password: hashedPassword });
+              
+              setFormData(prev => ({ ...prev, password: hashedPassword }));
+              Alert.alert("Thành công", "Password đã reset về '123456'");
+            } catch (err) {
+              Alert.alert("Lỗi", "Không thể reset password: " + err.message);
+            }
+          },
+          style: "destructive"
+        }
+      ]
+    );
+  };
+
   const roles = ['user', 'admin', 'chủ shop', 'shipper', 'manager'];
 
   return (
@@ -140,16 +172,11 @@ export default function EditUserScreen() {
             <Text style={styles.sectionTitle}>TÀI KHOẢN & BẢO MẬT</Text>
             <Text style={styles.label}>Họ và tên</Text>
             <TextInput style={styles.input} value={formData.name} onChangeText={t => setFormData({...formData, name: t})} />
-            <View style={styles.row}>
-              <View style={styles.col}>
-                <Text style={styles.label}>Số điện thoại</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={formData.phone} onChangeText={t => setFormData({...formData, phone: t})} />
-              </View>
-              <View style={styles.col}>
-                <Text style={styles.label}>Mật khẩu</Text>
-                <TextInput style={styles.input} value={formData.password} onChangeText={t => setFormData({...formData, password: t})} />
-              </View>
-            </View>
+            <Text style={styles.label}>Số điện thoại</Text>
+            <TextInput style={styles.input} keyboardType="numeric" value={formData.phone} onChangeText={t => setFormData({...formData, phone: t})} />
+            <TouchableOpacity style={styles.resetPasswordBtn} onPress={handleResetPassword}>
+              <Text style={styles.resetPasswordText}>🔐 Reset Password về 123456</Text>
+            </TouchableOpacity>
             <Text style={styles.label}>Địa chỉ</Text>
             <TextInput style={styles.input} value={formData.address} onChangeText={t => setFormData({...formData, address: t})} />
           </View>
@@ -176,7 +203,7 @@ export default function EditUserScreen() {
                         style={[styles.toggleBtn, formData.status === 'enable' ? styles.bgGreen : styles.bgRed]}
                         onPress={() => setFormData({...formData, status: formData.status === 'enable' ? 'disable' : 'enable'})}
                     >
-                        <Text style={styles.toggleText}>{formData.status === 'enable' ? 'Kích hoạt' : 'Khóa'}</Text>
+                        <Text style={styles.toggleText}>Status: {formData.status === 'enable' ? '✓ Kích hoạt' : '✗ Khóa'}</Text>
                     </TouchableOpacity>
                 </View>
                 <View style={styles.col}>
@@ -185,7 +212,7 @@ export default function EditUserScreen() {
                         style={[styles.toggleBtn, formData.mustCheckIn === 'enable' ? styles.bgGreen : styles.bgRed]}
                         onPress={() => setFormData({...formData, mustCheckIn: formData.mustCheckIn === 'enable' ? 'disable' : 'enable'})}
                     >
-                        <Text style={styles.toggleText}>{formData.mustCheckIn === 'enable' ? 'Bật' : 'Tắt'}</Text>
+                        <Text style={styles.toggleText}>{formData.mustCheckIn === 'enable' ? '✓ Bật' : '✗ Tắt'}</Text>
                     </TouchableOpacity>
                 </View>
             </View>
@@ -199,6 +226,34 @@ export default function EditUserScreen() {
                     <TextInput style={styles.input} keyboardType="numeric" value={formData.index.toString()} onChangeText={t => setFormData({...formData, index: t})} />
                 </View>
             </View>
+
+            {/* Trạng thái Ready cho Shipper/Shop */}
+            {(formData.role === 'shipper' || formData.role === 'chủ shop') && (
+              <View style={styles.row}>
+                <View style={styles.col}>
+                  <Text style={styles.label}>Sẵn sàng hôm nay</Text>
+                  <TouchableOpacity 
+                    style={[styles.toggleBtn, formData.isReady ? styles.bgGreen : styles.bgRed]}
+                    onPress={() => setFormData({...formData, isReady: !formData.isReady})}
+                  >
+                    <Text style={styles.toggleText}>{formData.isReady ? '✓ Có' : '✗ Không'}</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.col}>
+                  <Text style={styles.label}>Ready Date</Text>
+                  <TextInput style={styles.input} value={formData.readyDate} onChangeText={t => setFormData({...formData, readyDate: t})} placeholder="YYYY-MM-DD" />
+                </View>
+              </View>
+            )}
+
+            {/* Resident Shop */}
+            <Text style={styles.label}>Cửa hàng Resident</Text>
+            <TouchableOpacity 
+              style={[styles.toggleBtn, formData.isResidentShop ? styles.bgGreen : styles.bgRed]}
+              onPress={() => setFormData({...formData, isResidentShop: !formData.isResidentShop})}
+            >
+              <Text style={styles.toggleText}>{formData.isResidentShop ? '✓ Có' : '✗ Không'}</Text>
+            </TouchableOpacity>
           </View>
 
           {/* SECTION THÔNG TIN CỬA HÀNG - Đã đưa icon vào ngang hàng ô input */}
@@ -232,7 +287,18 @@ export default function EditUserScreen() {
             </View>
           </View>
 
-          <Text style={styles.tokenLabel}>ExpoToken: {formData.expoToken || 'N/A'}</Text>
+          {/* SECTION THÔNG TIN KHÁC */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>THÔNG TIN KHÁC</Text>
+            <Text style={styles.infoLabel}>ExpoToken:</Text>
+            <Text style={styles.infoValue}>{formData.expoToken || 'N/A'}</Text>
+            
+            <Text style={[styles.infoLabel, {marginTop: 10}]}>UID:</Text>
+            <Text style={styles.infoValue}>{formData.uid || 'N/A'}</Text>
+            
+            <Text style={[styles.infoLabel, {marginTop: 10}]}>Ngày tạo:</Text>
+            <Text style={styles.infoValue}>{formData.createdAt ? new Date(formData.createdAt).toLocaleString('vi-VN') : 'N/A'}</Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -249,6 +315,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontWeight: 'bold', color: COLORS.primary, marginBottom: 10, letterSpacing: 0.5 },
   label: { fontSize: 11, color: '#666', marginTop: 8, marginBottom: 4 },
   input: { backgroundColor: '#f5f7f9', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#eef1f4', fontSize: 14 },
+  infoLabel: { fontSize: 11, color: '#666', fontWeight: '600', marginTop: 8 },
+  infoValue: { backgroundColor: '#f5f7f9', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#eef1f4', fontSize: 12, color: '#333' },
   
   // Style mới để đưa icon ngang hàng với input
   inputWithIcon: { flexDirection: 'row', alignItems: 'center' },
@@ -265,5 +333,7 @@ const styles = StyleSheet.create({
   bgGreen: { backgroundColor: '#27AE60' },
   bgRed: { backgroundColor: '#EB5757' },
   toggleText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+  resetPasswordBtn: { backgroundColor: '#FF6B6B', paddingVertical: 10, borderRadius: 8, alignItems: 'center', marginVertical: 10 },
+  resetPasswordText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
   tokenLabel: { fontSize: 9, color: '#ccc', textAlign: 'center', marginBottom: 30 }
 });

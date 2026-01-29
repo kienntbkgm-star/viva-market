@@ -1,5 +1,6 @@
 // @ts-nocheck
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import bcryptjs from 'bcryptjs';
 import {
     arrayUnion,
     collection,
@@ -367,8 +368,14 @@ export const useAppStore = create((set, get) => ({
 
   login: async (phoneNumber, password, expoToken) => {
     const allUsers = get().users;
-    const userFound = allUsers.find(u => u.phone === phoneNumber && u.password === password);
+    const userFound = allUsers.find(u => u.phone === phoneNumber);
+    
     if (!userFound) return { success: false, message: 'Sai tài khoản hoặc mật khẩu!' };
+    
+    // Tất cả password đã được hash trên server → dùng bcryptjs compare
+    const isPasswordMatch = userFound.password ? bcryptjs.compareSync(password, userFound.password) : false;
+    
+    if (!isPasswordMatch) return { success: false, message: 'Sai tài khoản hoặc mật khẩu!' };
     if (userFound.status === 'disable') return { success: false, message: 'Tài khoản đã bị khóa!' };
     set({ currentUser: userFound, isGuest: false, guestId: null });
     
@@ -446,8 +453,16 @@ export const useAppStore = create((set, get) => ({
     try {
       const { users, expoToken } = get();
       const nextId = Math.max(...users.map(u => Number(u.id) || 0), 0) + 1;
+      
+      // Hash password nếu có (guest không có password)
+      let hashedPassword = userData.password || '';
+      if (hashedPassword && hashedPassword.trim() !== '') {
+        hashedPassword = bcryptjs.hashSync(userData.password, 10);
+      }
+      
       const newUser = {
         ...userData,
+        password: hashedPassword,
         id: nextId,
         role: 'user',
         status: 'enable',
@@ -459,6 +474,54 @@ export const useAppStore = create((set, get) => ({
       set({ currentUser: newUser, isGuest: false, guestId: null }); 
       return { success: true };
     } catch (error) {
+      return { success: false, message: error.message };
+    }
+  },
+
+  // Yêu cầu reset password - gửi notif admin
+  requestPasswordReset: async (phoneNumber) => {
+    try {
+      const { users } = get();
+      const userFound = users.find(u => u.phone === phoneNumber);
+      
+      if (!userFound) {
+        return { success: false, message: 'Số điện thoại không tồn tại!' };
+      }
+
+      // Lưu request vào DB
+      const resetRequest = {
+        userId: userFound.id,
+        userName: userFound.name,
+        userPhone: phoneNumber,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+      
+      await addDoc(collection(db, 'passwordResetRequests'), resetRequest);
+
+      // Gửi notif đến admin
+      const admins = users.filter(u => u.role === 'admin');
+      const adminsWithToken = admins.filter(u => u.expoToken);
+      
+      if (adminsWithToken.length > 0) {
+        try {
+          const { sendNotificationToMultiple } = require('../components/Notification');
+          const notifTitle = '🔐 Yêu cầu reset password';
+          const notifBody = `${userFound.name} (${phoneNumber}) yêu cầu reset password`;
+          
+          await sendNotificationToMultiple(notifTitle, notifBody, adminsWithToken);
+        } catch (notifErr) {
+          console.error('Lỗi gửi notif admin:', notifErr);
+          // Vẫn trả về success vì request đã được lưu
+        }
+      }
+
+      return { 
+        success: true, 
+        message: 'Yêu cầu reset password đã được gửi đến admin. Vui lòng chờ xác nhận.' 
+      };
+    } catch (error) {
+      console.error('Reset password error:', error);
       return { success: false, message: error.message };
     }
   },

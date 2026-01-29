@@ -14,6 +14,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { sendNotificationToMultiple } from '../../src/components/Notification';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
@@ -22,7 +23,7 @@ export default function ShipperOrderDetailScreen() {
   const router = useRouter();
   const { orderId } = useLocalSearchParams();
   
-  const { foodOrders, currentUser, shops } = useAppStore();
+  const { foodOrders, currentUser, shops, users } = useAppStore();
   
   const order = useMemo(() => 
     foodOrders.find(o => String(o.orderId) === String(orderId) || String(o.id) === String(orderId))
@@ -119,6 +120,51 @@ export default function ShipperOrderDetailScreen() {
         }
         
         await updateDoc(orderRef, updateData);
+        
+        // 📢 GỬI NOTIFICATION: Shipper chỉnh sửa đơn -> Khách, Admin, Chủ shop
+        console.log('🔔 Gửi notification: Shipper chỉnh sửa đơn hàng');
+        try {
+          const customer = users.find(u => u.id === order.userId);
+          const admins = users.filter(u => u.role === 'admin');
+          
+          let recipients = [];
+          let notifTitle = '';
+          let notifBody = '';
+
+          if (isLastItem) {
+            // Shipper hủy đơn -> chỉ gửi cho admin & khách
+            recipients = [
+              ...(customer ? [customer] : []),
+              ...admins
+            ].filter(u => u.expoToken);
+            
+            notifTitle = '❌ Đơn hàng bị hủy';
+            notifBody = `Shipper ${currentUser.name} đã hủy: ${item.name}`;
+          } else {
+            // Shipper bỏ món -> gửi cho khách, admin, chủ shop
+            const uniqueShopIds = new Set(order.items.map(i => i.shopId));
+            const shopOwners = Array.from(uniqueShopIds).map(shopId => 
+              users.find(u => String(u.id) === String(shopId))
+            ).filter(Boolean);
+
+            recipients = [
+              ...(customer ? [customer] : []),
+              ...admins,
+              ...shopOwners
+            ].filter(u => u.expoToken);
+            
+            notifTitle = '📝 Đơn hàng được cập nhật';
+            notifBody = `Shipper ${currentUser.name} đã bỏ: ${item.name} (${item.quantity}x)`;
+          }
+
+          if (recipients.length > 0) {
+            await sendNotificationToMultiple(notifTitle, notifBody, recipients);
+            console.log(`✅ Gửi notification cho ${recipients.length} người`);
+          }
+        } catch (notifError) {
+          console.error('⚠️ Lỗi gửi notification nhưng đơn đã được cập nhật:', notifError);
+          // Không dừng flow, đơn đã được cập nhật rồi
+        }
         
         if (Platform.OS === 'web') {
           window.alert(isLastItem ? "Đã hủy đơn hàng" : "Đã bỏ món thành công");

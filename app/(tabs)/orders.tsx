@@ -14,6 +14,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { sendNotificationToMultiple } from '../../src/components/Notification';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
@@ -82,7 +83,7 @@ const getStatusText = (status) => {
 };
 
 export default function OrdersScreen() {
-  const { currentUser } = useAppStore();
+  const { currentUser, users } = useAppStore();
   const router = useRouter(); // Khởi tạo router
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -184,6 +185,38 @@ export default function OrdersScreen() {
             status: 'cancelled'
           })
         });
+
+        // 📢 GỬI NOTIFICATION: Khách hủy đơn -> Admin, Chủ shop, Shipper
+        console.log('🔔 Gửi notification: Khách hủy đơn hàng');
+        try {
+          const admins = users.filter(u => u.role === 'admin');
+          
+          // Lấy danh sách chủ shop từ các items trong order
+          const uniqueShopIds = new Set(order.items?.map(i => i.shopId) || []);
+          const shopOwners = Array.from(uniqueShopIds).map(shopId => 
+            users.find(u => String(u.id) === String(shopId))
+          ).filter(Boolean);
+
+          // Lấy shipper nếu đơn đã được nhận
+          const shipper = order.shipperId ? users.find(u => u.id === order.shipperId) : null;
+
+          const recipients = [
+            ...admins,
+            ...shopOwners,
+            ...(shipper ? [shipper] : [])
+          ].filter(u => u.expoToken);
+
+          if (recipients.length > 0) {
+            const notifTitle = '❌ Đơn hàng bị hủy';
+            const notifBody = `${currentUser ? currentUser.name : 'Khách'} đã hủy đơn`;
+
+            await sendNotificationToMultiple(notifTitle, notifBody, recipients);
+            console.log(`✅ Gửi notification cho ${recipients.length} người`);
+          }
+        } catch (notifError) {
+          console.error('⚠️ Lỗi gửi notification nhưng đơn đã được cập nhật:', notifError);
+          // Không dừng flow, đơn đã được cập nhật rồi
+        }
       } catch (error) {
         console.error("Cancel Error:", error);
       }

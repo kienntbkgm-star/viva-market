@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Redirect, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MyButton, MyInput } from '../src/components/MyUI';
 import { useAppStore } from '../src/store/useAppStore';
@@ -9,10 +9,13 @@ import { GlobalStyles } from '../src/styles/GlobalStyles'; // Giữ nguyên Styl
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, currentUser, initializeGuest, expoToken } = useAppStore();
+  const { login, currentUser, initializeGuest, expoToken, requestPasswordReset } = useAppStore();
   
   const [phone, setPhone] = useState('0931837170');
   const [password, setPassword] = useState('Kien1234');
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotPhone, setForgotPhone] = useState('');
+  const [isLoadingReset, setIsLoadingReset] = useState(false);
 
   if (currentUser) return <Redirect href="/(tabs)/home" />;
 
@@ -35,6 +38,29 @@ export default function LoginScreen() {
   const handleGuestAccess = async () => {
     await initializeGuest();
     router.replace('/(tabs)/home');
+  };
+
+  const handleForgotPassword = async () => {
+    if (forgotPhone.length < 10) {
+      Alert.alert("Lỗi", "Số điện thoại không hợp lệ");
+      return;
+    }
+
+    setIsLoadingReset(true);
+    try {
+      const result = await requestPasswordReset(forgotPhone);
+      if (result.success) {
+        Alert.alert("Thành công", result.message);
+        setShowForgotModal(false);
+        setForgotPhone('');
+      } else {
+        Alert.alert("Lỗi", result.message);
+      }
+    } catch (error) {
+      Alert.alert("Lỗi", "Có lỗi xảy ra, vui lòng thử lại");
+    } finally {
+      setIsLoadingReset(false);
+    }
   };
 
   // CẬP NHẬT: Danh sách đăng nhập nhanh chuẩn theo dataFirebase.txt
@@ -77,6 +103,16 @@ export default function LoginScreen() {
 
         <MyButton title="ĐĂNG NHẬP" onPress={() => handleLogin()} />
 
+        {/* Nút Quên Password */}
+        <TouchableOpacity 
+          onPress={() => setShowForgotModal(true)}
+          style={{ marginTop: 15, alignItems: 'center' }}
+        >
+          <Text style={{ color: '#3498DB', fontSize: 14, fontWeight: '600' }}>
+            🔐 Quên mật khẩu?
+          </Text>
+        </TouchableOpacity>
+
         {/* PHỤC HỒI UI GỐC: Nút Đăng nhập nhanh 48% như file của bạn */}
         <View style={styles.quickLoginContainer}>
             <Text style={styles.quickTitle}>Đăng nhập nhanh cho Tester</Text>
@@ -109,6 +145,56 @@ export default function LoginScreen() {
         </View>
 
       </ScrollView>
+
+      {/* Modal Quên Password */}
+      <Modal
+        visible={showForgotModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowForgotModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>🔐 Yêu cầu Reset Mật khẩu</Text>
+            
+            <Text style={styles.modalDescription}>
+              Nhập số điện thoại của bạn. Admin sẽ xử lý yêu cầu và gửi mật khẩu mới cho bạn.
+            </Text>
+
+            <MyInput
+              placeholder="SỐ ĐIỆN THOẠI"
+              value={forgotPhone}
+              onChangeText={setForgotPhone}
+              keyboard="phone-pad"
+            />
+
+            <View style={styles.modalButtonGroup}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelBtn]}
+                onPress={() => {
+                  setShowForgotModal(false);
+                  setForgotPhone('');
+                }}
+                disabled={isLoadingReset}
+              >
+                <Text style={styles.cancelBtnText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.submitBtn, isLoadingReset && { opacity: 0.6 }]}
+                onPress={handleForgotPassword}
+                disabled={isLoadingReset}
+              >
+                {isLoadingReset ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Gửi Yêu cầu</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -127,4 +213,61 @@ const styles = StyleSheet.create({
     },
     quickBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
     quickPhoneText: { color: '#fff', fontSize: 10, marginTop: 2, opacity: 0.9 },
+    // Modal styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        backgroundColor: '#fff',
+        borderRadius: 20,
+        padding: 20,
+        width: '100%',
+        maxWidth: 400,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 10,
+        textAlign: 'center',
+    },
+    modalDescription: {
+        fontSize: 14,
+        color: '#666',
+        marginBottom: 20,
+        textAlign: 'center',
+        lineHeight: 20,
+    },
+    modalButtonGroup: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 20,
+    },
+    modalButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelBtn: {
+        backgroundColor: '#E8E8E8',
+    },
+    cancelBtnText: {
+        color: '#333',
+        fontWeight: '600',
+        fontSize: 14,
+    },
+    submitBtn: {
+        backgroundColor: '#3498DB',
+    },
+    submitBtnText: {
+        color: '#fff',
+        fontWeight: '600',
+        fontSize: 14,
+    },
 });

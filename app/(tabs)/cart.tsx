@@ -17,6 +17,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { sendNotificationToMultiple } from '../../src/components/Notification';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
@@ -170,6 +171,38 @@ export default function CartScreen() {
       if (currentUser?.id && !isGuestUser) {
         await updateDoc(doc(db, 'users', currentUser.id.toString()), { point: increment(Math.floor(finalTotal / 10)) });
       }
+
+      // 📢 GỬI NOTIFICATION: Khách đặt đơn -> Shipper, Admin, Chủ shop
+      console.log('🔔 Gửi notification: Khách đặt đơn hàng từ giỏ');
+      try {
+        const shippers = users.filter(u => u.role === 'shipper');
+        const admins = users.filter(u => u.role === 'admin');
+        
+        // Lấy danh sách chủ shop từ các items trong cart
+        const uniqueShopIds = new Set(cart.map(item => item.shopId));
+        const shopOwners = Array.from(uniqueShopIds).map(shopId => 
+          users.find(u => String(u.id) === String(shopId))
+        ).filter(Boolean);
+
+        const recipients = [
+          ...shippers,
+          ...admins,
+          ...shopOwners
+        ].filter(u => u.expoToken);
+
+        if (recipients.length > 0) {
+          const itemNames = cleanItems.map(item => item.name).join(', ');
+          const notifTitle = '🛒 Đơn hàng mới';
+          const notifBody = `Khách ${newOrder.userName} đặt: ${itemNames} - ${(finalTotal * 1000).toLocaleString('vi-VN')}đ`;
+
+          await sendNotificationToMultiple(notifTitle, notifBody, recipients);
+          console.log(`✅ Gửi notification cho ${recipients.length} người`);
+        }
+      } catch (notifError) {
+        console.error('⚠️ Lỗi gửi notification nhưng đơn đã được tạo:', notifError);
+        // Không dừng flow, đơn đã được tạo rồi
+      }
+
       setIsSuccess(true);
       clearCart();
     } catch (error) {

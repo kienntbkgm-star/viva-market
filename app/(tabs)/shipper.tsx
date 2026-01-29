@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { sendNotificationToMultiple } from '../../src/components/Notification';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
@@ -31,7 +32,7 @@ const calculateExtraStepFee = (order) => {
 
 export default function ShipperTabScreen() {
   const router = useRouter();
-  const { foodOrders, currentUser, system } = useAppStore();
+  const { foodOrders, currentUser, system, users } = useAppStore();
   const [activeTab, setActiveTab] = useState('available');
 
   const shipperRatio = system?.money?.shipperShipRatio || 70;
@@ -71,6 +72,40 @@ export default function ShipperTabScreen() {
           time: new Date().toISOString()
         })
       });
+
+      // 📢 GỬI NOTIFICATION: Shipper nhận đơn -> Admin, Khách, Chủ shop
+      console.log('🔔 Gửi notification: Shipper đã nhận đơn');
+      try {
+        const admins = users.filter(u => u.role === 'admin');
+        
+        // Lấy khách hàng
+        const customer = users.find(u => u.id === item.userId);
+        
+        // Lấy danh sách chủ shop từ các items trong order
+        const uniqueShopIds = new Set(item.items?.map(i => i.shopId) || []);
+        const shopOwners = Array.from(uniqueShopIds).map(shopId => 
+          users.find(u => String(u.id) === String(shopId))
+        ).filter(Boolean);
+
+        const recipients = [
+          ...admins,
+          ...(customer ? [customer] : []),
+          ...shopOwners
+        ].filter(u => u.expoToken);
+
+        if (recipients.length > 0) {
+          const itemNames = item.items?.map(i => i.name).join(', ') || 'Đơn hàng';
+          const notifTitle = '🚗 Shipper đã nhận đơn';
+          const notifBody = `${currentUser.name} sẽ giao: ${itemNames}`;
+
+          await sendNotificationToMultiple(notifTitle, notifBody, recipients);
+          console.log(`✅ Gửi notification cho ${recipients.length} người`);
+        }
+      } catch (notifError) {
+        console.error('⚠️ Lỗi gửi notification nhưng đơn đã được cập nhật:', notifError);
+        // Không dừng flow, đơn đã được cập nhật rồi
+      }
+
       if (Platform.OS === 'web') window.alert("Đã nhận đơn thành công!");
       else Alert.alert("Thành công", "Đã nhận đơn!");
       setActiveTab('my_orders');
@@ -111,6 +146,34 @@ export default function ShipperTabScreen() {
             createdAt: new Date().toISOString(),
             performedBy: 'system'
         });
+      }
+
+      // 📢 GỬI NOTIFICATION: Đơn hoàn thành -> Admin, Chủ shop
+      console.log('🔔 Gửi notification: Đơn hàng hoàn thành');
+      try {
+        const admins = users.filter(u => u.role === 'admin');
+        
+        // Lấy danh sách chủ shop từ các items trong order
+        const uniqueShopIds = new Set(item.items?.map(i => i.shopId) || []);
+        const shopOwners = Array.from(uniqueShopIds).map(shopId => 
+          users.find(u => String(u.id) === String(shopId))
+        ).filter(Boolean);
+
+        const recipients = [
+          ...admins,
+          ...shopOwners
+        ].filter(u => u.expoToken);
+
+        if (recipients.length > 0) {
+          const notifTitle = '✅ Đơn hàng đã hoàn thành';
+          const notifBody = `Shipper ${currentUser.name} đã giao xong`;
+
+          await sendNotificationToMultiple(notifTitle, notifBody, recipients);
+          console.log(`✅ Gửi notification cho ${recipients.length} người`);
+        }
+      } catch (notifError) {
+        console.error('⚠️ Lỗi gửi notification nhưng đơn đã được cập nhật:', notifError);
+        // Không dừng flow, đơn đã được cập nhật rồi
       }
 
       if (Platform.OS === 'web') window.alert("Giao hàng thành công!");

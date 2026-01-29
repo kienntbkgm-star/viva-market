@@ -1,8 +1,9 @@
 // @ts-nocheck
 import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import bcryptjs from 'bcryptjs';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Image, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MyInput } from '../../src/components/MyUI';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
@@ -15,6 +16,12 @@ export default function ProfileScreen() {
     const [name, setName] = useState(currentUser?.name || '');
     const [address, setAddress] = useState(currentUser?.address || '');
     const [readyLoading, setReadyLoading] = useState(false);
+    
+    const [showChangePassModal, setShowChangePassModal] = useState(false);
+    const [oldPassword, setOldPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
 
     // CHECK ROLE - Guest check bằng password trống
     const isGuestUser = currentUser && !currentUser.password;
@@ -64,6 +71,57 @@ export default function ProfileScreen() {
         router.replace('/login');
     };
 
+    const handleChangePassword = async () => {
+        if (!oldPassword || !newPassword || !confirmPassword) {
+            Alert.alert("Lỗi", "Vui lòng điền đầy đủ thông tin");
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            Alert.alert("Lỗi", "Mật khẩu mới không khớp");
+            return;
+        }
+
+        if (newPassword.length < 6) {
+            Alert.alert("Lỗi", "Mật khẩu phải có ít nhất 6 ký tự");
+            return;
+        }
+
+        setIsChangingPassword(true);
+        try {
+            const isOldPasswordCorrect = bcryptjs.compareSync(oldPassword, currentUser.password);
+            if (!isOldPasswordCorrect) {
+                Alert.alert("Lỗi", "Mật khẩu hiện tại không chính xác");
+                setIsChangingPassword(false);
+                return;
+            }
+
+            const hashedNewPassword = bcryptjs.hashSync(newPassword, 10);
+            const result = await updateProfile({ 
+                name: currentUser.name, 
+                address: currentUser.address,
+                password: hashedNewPassword 
+            });
+
+            if (result.success) {
+                Alert.alert("Thành công", "Đã thay đổi mật khẩu", [
+                    { text: "OK", onPress: () => {
+                        setShowChangePassModal(false);
+                        setOldPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                    }}
+                ]);
+            } else {
+                Alert.alert("Lỗi", "Không thể đổi mật khẩu");
+            }
+        } catch (error) {
+            Alert.alert("Lỗi", "Có lỗi xảy ra: " + error.message);
+        } finally {
+            setIsChangingPassword(false);
+        }
+    };
+
     return (
         <SafeAreaView style={GlobalStyles.container}>
             <View style={styles.header}>
@@ -72,7 +130,7 @@ export default function ProfileScreen() {
                         {isGuestUser ? "?" : currentUser?.name?.charAt(0)?.toUpperCase()}
                     </Text>
                 </View>
-                <View style={{ marginLeft: 15 }}>
+                <View style={{ marginLeft: 15, flex: 1 }}>
                     <Text style={styles.nameText}>{isGuestUser ? "Khách vãng lai" : currentUser?.name}</Text>
                     <Text style={styles.phoneText}>{isGuestUser ? `ID: ${currentUser?.id}` : currentUser?.phone}</Text>
                     
@@ -86,6 +144,16 @@ export default function ProfileScreen() {
                         Vai trò: {isGuestUser ? "NGƯỜI DÙNG CHƯA ĐĂNG KÝ" : currentUser?.role?.toUpperCase()}
                     </Text>
                 </View>
+                <TouchableOpacity 
+                    style={styles.headerLogoutBtn}
+                    onPress={handleAuthAction}
+                >
+                    <Ionicons 
+                        name={isGuestUser ? "log-in-outline" : "log-out-outline"} 
+                        size={32} 
+                        color={isGuestUser ? "#2E7D32" : "#FF4747"} 
+                    />
+                </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
@@ -130,6 +198,16 @@ export default function ProfileScreen() {
                                 </Text>
                             </View>
                         </View>
+                    )}
+
+                    {!isGuestUser && !isEditing && (
+                        <TouchableOpacity 
+                            style={styles.changePasswordBtn}
+                            onPress={() => setShowChangePassModal(true)}
+                        >
+                            <Ionicons name="key-outline" size={16} color="#fff" />
+                            <Text style={styles.changePasswordText}>Đổi mật khẩu</Text>
+                        </TouchableOpacity>
                     )}
                 </View>
 
@@ -293,27 +371,92 @@ export default function ProfileScreen() {
                     </View>
                 )}
 
-                <TouchableOpacity 
-                    style={[styles.logoutBtn, isGuestUser && { backgroundColor: '#E8F5E9' }]} 
-                    onPress={handleAuthAction}
-                >
-                    <Ionicons 
-                        name={isGuestUser ? "log-in-outline" : "log-out-outline"} 
-                        size={20} 
-                        color={isGuestUser ? "#2E7D32" : "#FF4747"} 
-                    />
-                    <Text style={[styles.logoutText, isGuestUser && { color: '#2E7D32' }]}>
-                        {isGuestUser ? "ĐĂNG NHẬP NGAY" : "ĐĂNG XUẤT"}
-                    </Text>
-                </TouchableOpacity>
-
             </ScrollView>
+
+            {/* Modal Đổi Password */}
+            <Modal
+                visible={showChangePassModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowChangePassModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>🔐 Đổi Mật khẩu</Text>
+                        
+                        <View style={{ gap: 12, marginVertical: 15 }}>
+                            <View>
+                                <Text style={styles.modalLabel}>Mật khẩu hiện tại</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    placeholder="Nhập mật khẩu hiện tại"
+                                    secureTextEntry
+                                    value={oldPassword}
+                                    onChangeText={setOldPassword}
+                                    editable={!isChangingPassword}
+                                />
+                            </View>
+
+                            <View>
+                                <Text style={styles.modalLabel}>Mật khẩu mới</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
+                                    secureTextEntry
+                                    value={newPassword}
+                                    onChangeText={setNewPassword}
+                                    editable={!isChangingPassword}
+                                />
+                            </View>
+
+                            <View>
+                                <Text style={styles.modalLabel}>Xác nhận mật khẩu mới</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    placeholder="Xác nhận mật khẩu mới"
+                                    secureTextEntry
+                                    value={confirmPassword}
+                                    onChangeText={setConfirmPassword}
+                                    editable={!isChangingPassword}
+                                />
+                            </View>
+                        </View>
+
+                        <View style={styles.modalButtonGroup}>
+                            <TouchableOpacity
+                                style={[styles.modalButton, styles.modalCancelBtn]}
+                                onPress={() => {
+                                    setShowChangePassModal(false);
+                                    setOldPassword('');
+                                    setNewPassword('');
+                                    setConfirmPassword('');
+                                }}
+                                disabled={isChangingPassword}
+                            >
+                                <Text style={styles.modalCancelText}>Hủy</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.modalButton, styles.modalSubmitBtn, isChangingPassword && { opacity: 0.6 }]}
+                                onPress={handleChangePassword}
+                                disabled={isChangingPassword}
+                            >
+                                {isChangingPassword ? (
+                                    <ActivityIndicator color="#fff" size="small" />
+                                ) : (
+                                    <Text style={styles.modalSubmitText}>Đổi mật khẩu</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee' },
     avatarContainer: { width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
     avatarText: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
     nameText: { fontSize: 18, fontWeight: 'bold', color: '#333' },
@@ -321,6 +464,7 @@ const styles = StyleSheet.create({
     pointTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#Fdf2f2', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 8 },
     pointText: { marginLeft: 5, fontSize: 12, color: COLORS.primary, fontWeight: '600' },
     roleText: { marginTop: 5, fontSize: 12, color: '#666', fontStyle: 'italic' },
+    headerLogoutBtn: { padding: 8 },
     content: { padding: 20 },
     guestNotice: { flexDirection: 'row', backgroundColor: '#FFF4E5', padding: 15, borderRadius: 15, marginBottom: 15, alignItems: 'center' },
     guestNoticeText: { flex: 1, marginLeft: 10, fontSize: 12, color: '#663C00', lineHeight: 18 },
@@ -342,6 +486,18 @@ const styles = StyleSheet.create({
     foodName: { fontSize: 14, fontWeight: '500' },
     foodPrice: { fontSize: 12, marginRight: 5 },
     foodPriceOld: { fontSize: 11, color: '#999', textDecorationLine: 'line-through', marginLeft: 8 },
-    logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 30, padding: 15, borderRadius: 15, backgroundColor: '#FFF0F0', marginBottom: 50 },
-    logoutText: { marginLeft: 10, color: '#FF4747', fontWeight: 'bold', fontSize: 14 }
+    changePasswordBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary, padding: 10, borderRadius: 10, marginTop: 15 },
+    changePasswordText: { color: '#fff', fontWeight: '600', marginLeft: 8, fontSize: 14 },
+    // Modal styles
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 20, width: '100%', maxWidth: 400 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 5 },
+    modalLabel: { fontSize: 12, color: '#666', fontWeight: '600', marginBottom: 5 },
+    modalInput: { backgroundColor: '#f5f7f9', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#eef1f4', fontSize: 14 },
+    modalButtonGroup: { flexDirection: 'row', gap: 10, marginTop: 20 },
+    modalButton: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    modalCancelBtn: { backgroundColor: '#E8E8E8' },
+    modalCancelText: { color: '#333', fontWeight: '600', fontSize: 14 },
+    modalSubmitBtn: { backgroundColor: COLORS.primary },
+    modalSubmitText: { color: '#fff', fontWeight: '600', fontSize: 14 }
 });
