@@ -1,0 +1,826 @@
+# TÓM TẮT LOGIC TRANG SHIPPER/FINANCE.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình quản lý tài chính CÁ NHÂN của shipper (shipper view):
+- Xem số dư nợ của bản thân (với admin)
+- Xem lịch sử giao dịch (transactions) của mình
+- Display logic đảo ngược so với admin view (user-friendly)
+- Không có function thu/trả tiền (chỉ xem)
+
+## 📊 STATE & DATA
+
+**User Context:**
+```js
+const { currentUser } = useAppStore(); // Shipper đang đăng nhập
+```
+
+**Local State:**
+```js
+transactions: Array<Transaction> // Danh sách giao dịch của shipper
+loading: boolean // Trạng thái loading
+```
+
+**Computed Data:**
+```js
+// RAW balance từ Firestore (giống admin view)
+const rawBalance = transactions.reduce(
+  (sum, t) => sum + (t.amount || 0), 
+  0
+);
+
+// DISPLAY balance (đảo dấu để user-friendly)
+const displayBalance = rawBalance * -1;
+
+/**
+ * WHY FLIP SIGN?
+ * - Firestore data: Positive = Shipper owes admin (bad for shipper)
+ * - User-friendly: Negative = Shipper owes admin (red color, bad)
+ * - So we flip: displayBalance = -rawBalance
+ * 
+ * Example:
+ * - Firestore: +50k (shipper owes) → Display: -50k (red, bad)
+ * - Firestore: -20k (admin owes) → Display: +20k (green, good)
+ */
+```
+
+**Realtime Listener:**
+- Query `transactions` collection
+- Filter by `userId === currentUser.id`
+- OrderBy `createdAt` desc (Firestore orderBy, CÓ index)
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load Transactions
+```js
+useEffect(() => {
+  if (!currentUser || currentUser.role !== 'shipper') {
+    router.replace('/(tabs)/home');
+    return;
+  }
+  
+  setLoading(true);
+  
+  // Query WITH orderBy (có index trong Firestore)
+  const q = query(
+    collection(db, 'transactions'),
+    where('userId', '==', Number(currentUser.id)),
+    orderBy('createdAt', 'desc') // Sort by Firestore
+  );
+  
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const data = snapshot.docs.map(doc => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    }));
+    
+    setTransactions(data);
+    setLoading(false);
+  });
+  
+  return () => unsubscribe();
+}, [currentUser]);
+```
+
+### 2. Calculate Display Balance
+```js
+// Step 1: Sum all amounts (same as admin view)
+const rawBalance = transactions.reduce(
+  (sum, t) => sum + (t.amount || 0), 
+  0
+);
+
+// Step 2: Flip sign for display
+const displayBalance = rawBalance * -1;
+
+// Step 3: Determine status
+const isDebtToAdmin = displayBalance < 0; // Red card
+const isAdminOwes = displayBalance > 0; // Green card
+const statusText = isDebtToAdmin 
+  ? "BẠN ĐANG NỢ ADMIN"
+  : "ADMIN ĐANG NỢ BẠN";
+```
+
+### 3. Display Transactions (Flipped)
+```js
+const renderItem = ({ item }) => {
+  // Flip amount for display
+  const displayAmount = (item.amount || 0) * -1;
+  
+  // Determine color (opposite of admin view)
+  const amountColor = displayAmount < 0 ? '#E67E22' : '#27AE60';
+  
+  // Show icon based on status
+  const icon = isDebtToAdmin ? 'receipt' : 'cash-check';
+  
+  return (
+    <View style={styles.transactionItem}>
+      <Icon name={icon} size={24} color={amountColor} />
+      <View style={styles.transactionContent}>
+        <Text style={styles.transactionDesc}>{item.desc}</Text>
+        <Text style={styles.transactionDate}>
+          {formatDate(item.createdAt)}
+        </Text>
+      </View>
+      <Text style={[styles.transactionAmount, { color: amountColor }]}>
+        {displayAmount >= 0 ? '+' : ''}{(displayAmount * 1000).toLocaleString()}đ
+      </Text>
+    </View>
+  );
+};
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### Balance Flip Logic
+```js
+// Magic formula:
+const displayBalance = rawBalance * -1;
+
+// Example 1: Shipper owes 50k
+// - Firestore: +50k (positive, shipper debt)
+// - Display: -50k (negative, red, bad for shipper)
+
+// Example 2: Admin owes 20k
+// - Firestore: -20k (negative, admin owes)
+// - Display: +20k (positive, green, good for shipper)
+```
+
+### Transaction Flip Logic
+```js
+// Each transaction also flipped
+const displayAmount = (item.amount || 0) * -1;
+
+// Example:
+// - Firestore: +15k (debt increased) → Display: -15k (red)
+// - Firestore: -10k (payment received) → Display: +10k (green)
+```
+
+### Status Text
+```js
+const isDebtToAdmin = displayBalance < 0;
+const statusText = isDebtToAdmin 
+  ? "BẠN ĐANG NỢ ADMIN"
+  : "ADMIN ĐANG NỢ BẠN";
+
+// Color:
+const statusColor = isDebtToAdmin ? '#E67E22' : '#27AE60';
+```
+
+### Icon Logic
+```js
+const icon = isDebtToAdmin ? 'receipt' : 'cash-check';
+
+// receipt: Shipper owes (bill icon)
+// cash-check: Admin owes (money icon)
+```
+
+### Date Formatting
+```js
+const formatDate = (isoString) => {
+  const date = new Date(isoString);
+  return date.toLocaleString('vi-VN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+};
+
+// Output: "27/01/2026, 10:30:15"
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Tài chính của tôi"
+  │   └─ Spacer
+  │
+  ├─ Balance Card (Top)
+  │   ├─ Background color: Orange (debt) / Green (admin owes)
+  │   ├─ Icon: receipt / cash-check
+  │   ├─ Status Badge: "BẠN ĐANG NỢ ADMIN" / "ADMIN ĐANG NỢ BẠN"
+  │   ├─ Label: "Số dư hiện tại"
+  │   └─ Amount: [displayBalance]đ (fontSize 32, bold, white)
+  │
+  ├─ Section Title: "Lịch sử giao dịch"
+  │
+  └─ FlatList: Transaction Items
+      └─ renderItem: Transaction Row
+          ├─ Icon (left): receipt / cash-check
+          ├─ Content (middle):
+          │   ├─ Desc (bold)
+          │   └─ Date (gray, small)
+          └─ Amount (right): ±XXXđ (color-coded)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Dual Perspective Display
+1. **Admin View (shipper-detail-finance.tsx):**
+   - rawBalance = +50k → Display: +50k (orange, "Shipper nợ")
+   - rawBalance = -20k → Display: -20k (green, "Admin nợ")
+
+2. **Shipper View (shipper/finance.tsx):**
+   - rawBalance = +50k → Display: -50k (red, "Bạn đang nợ Admin")
+   - rawBalance = -20k → Display: +20k (green, "Admin đang nợ bạn")
+
+3. **Why Flip?**
+   - User psychology: Negative = bad, positive = good
+   - Firestore data perspective: Admin-centric (positive = shipper owes)
+   - Shipper perspective: User-centric (negative = I owe, positive = They owe me)
+
+### Color Coding (Opposite of Admin)
+4. **Admin View:**
+   - Amount >= 0: Orange (shipper debt)
+   - Amount < 0: Green (admin owes)
+
+5. **Shipper View (After Flip):**
+   - displayAmount < 0: Orange (I owe, bad)
+   - displayAmount >= 0: Green (They owe me, good)
+
+6. **Balance Card Background:**
+   - `isDebtToAdmin` (displayBalance < 0): Orange background
+   - `isAdminOwes` (displayBalance > 0): Green background
+   - Zero: Neutral (orange default)
+
+### Read-Only View
+7. **No Input:**
+   - Shipper cannot add transactions manually
+   - No "Thu tiền" or "Trả tiền" button
+
+8. **Realtime Sync:**
+   - Auto update when:
+     - Admin thu tiền (PAYMENT)
+     - Shipper giao đơn COD (DEBT)
+     - System create refund (REFUND)
+
+### Icon Indicators
+9. **receipt icon:**
+   - Show when shipper owes admin
+   - Orange color
+   - Represents debt/bill
+
+10. **cash-check icon:**
+    - Show when admin owes shipper
+    - Green color
+    - Represents money owed to shipper
+
+### Firestore Index
+11. **Query Uses orderBy:**
+    - `orderBy('createdAt', 'desc')`
+    - Requires Firestore composite index
+    - Index exists: `(userId, createdAt DESC)`
+
+12. **Admin View Difference:**
+    - Admin view: Sort in JavaScript (no orderBy)
+    - Shipper view: Sort in Firestore (has orderBy)
+    - Reason: Admin view may have been created first before index
+
+### Role Check
+13. **Auth Guard:**
+    ```js
+    if (!currentUser || currentUser.role !== 'shipper') {
+      router.replace('/(tabs)/home');
+      return;
+    }
+    ```
+    - Only shipper can access
+    - Redirect to home if not shipper
+
+### Loading State
+14. **Show Loading:**
+    - `loading === true` during initial fetch
+    - Show spinner or "Đang tải..."
+
+15. **Hide Loading:**
+    - After onSnapshot first callback
+    - Even if transactions empty
+
+## 🚀 USER JOURNEY
+
+### Shipper - Xem số dư
+1. Navigate: Shipper tab → Nhấn "Tài chính"
+2. Route: `/shipper/finance`
+3. Load transactions of current shipper
+4. Display:
+   - Balance card: -50,000đ (orange, "BẠN ĐANG NỢ ADMIN")
+   - Transaction list:
+     - Giao đơn #123: -15,000đ (orange, debt)
+     - Giao đơn #124: -8,000đ (orange, debt)
+     - Admin thu tiền: +20,000đ (green, payment)
+     - Giao đơn #125: -10,000đ (orange, debt)
+     - ...
+
+### Shipper - Sau khi giao đơn
+1. Shipper complete order #126 (COD 12k)
+2. System auto create DEBT transaction:
+   - Firestore: +12k (increase debt)
+3. Realtime listener trigger
+4. Shipper screen update:
+   - Balance: -50k → -62k (worse)
+   - New transaction: -12,000đ (orange)
+   - Status: "BẠN ĐANG NỢ ADMIN"
+
+### Shipper - Sau khi admin thu tiền
+1. Shipper give 30k cash to admin
+2. Admin nhập 30000 → Thu nợ
+3. System create PAYMENT transaction:
+   - Firestore: -30k (decrease debt)
+4. Realtime listener trigger
+5. Shipper screen update:
+   - Balance: -62k → -32k (better)
+   - New transaction: +30,000đ (green)
+   - Status: "BẠN ĐANG NỢ ADMIN"
+
+### Shipper - Số dư dương
+1. Shipper giao nhiều đơn có discount cao
+2. Multiple REFUND transactions:
+   - Firestore: -5k, -3k, -2k (admin owes)
+3. Balance: +10k (admin owes shipper)
+4. Shipper screen:
+   - Balance card: +10,000đ (green background)
+   - Status: "ADMIN ĐANG NỢ BẠN"
+   - Icon: cash-check
+   - Shipper wait for admin to pay back
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không
+
+**Navigates FROM:**
+- Shipper tab screen
+- Route: `/shipper/finance`
+
+**Back Navigation:**
+- Back button (header left) → `router.back()`
+
+**Redirect:**
+- If not shipper role → `router.replace('/(tabs)/home')`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Query
+1. **Collection:** `transactions`
+2. **Query:**
+   ```js
+   query(
+     collection(db, 'transactions'),
+     where('userId', '==', Number(currentUser.id)),
+     orderBy('createdAt', 'desc')
+   )
+   ```
+3. **Index Required:** Yes
+   - Index fields: `(userId, createdAt DESC)`
+   - Create in Firestore console
+
+### Transaction Structure (Same as Admin)
+```js
+{
+  id: string,
+  userId: number,           // Shipper ID
+  userName: string,         // Shipper name
+  type: 'DEBT' | 'PAYMENT' | 'REFUND',
+  amount: number,           // Nghìn đồng (k), BEFORE flip
+  desc: string,
+  orderId?: string,
+  customerName?: string,
+  createdAt: string,        // ISO timestamp
+  performedBy: 'system' | 'admin'
+}
+```
+
+### Display Amount Calculation
+4. **Firestore Data:**
+   - DEBT: +15k (shipper owes more)
+   - PAYMENT: -10k (shipper owes less)
+   - REFUND: -2k (admin owes shipper)
+
+5. **Display Data (After Flip):**
+   - DEBT: -15k (red, bad)
+   - PAYMENT: +10k (green, good)
+   - REFUND: +2k (green, good)
+
+### Color Logic
+6. **Admin View:**
+   - amount >= 0: Orange
+   - amount < 0: Green
+
+7. **Shipper View:**
+   - displayAmount < 0: Orange
+   - displayAmount >= 0: Green
+
+8. **Result:** Same visual meaning, opposite data sign
+
+### Balance Display
+9. **Format:**
+   - `(displayBalance * 1000).toLocaleString()`
+   - Add 'đ' suffix
+   - Example: "50,000đ"
+
+10. **Sign Display:**
+    - Positive: No '+' sign (implicit good)
+    - Negative: Show '-' sign (explicit bad)
+
+### Transaction Amount Display
+11. **Format:**
+    - `(displayAmount * 1000).toLocaleString()`
+    - Add 'đ' suffix
+
+12. **Sign Display:**
+    - Positive: Add '+' prefix (money in)
+    - Negative: Show '-' prefix (money out)
+
+### Date Display
+13. **Format:** `toLocaleString('vi-VN', {...})`
+14. **Output:** "27/01/2026, 10:30:15"
+
+### Icon Library
+15. **Import:** `MaterialCommunityIcons`
+16. **Icons:**
+    - `receipt`: Bill/debt icon
+    - `cash-check`: Money/payment icon
+
+### Loading State
+17. **Initial:** `loading = true`
+18. **After Fetch:** `loading = false`
+19. **Show:** Loading spinner or text
+
+### Role-Based Access
+20. **Check:** `currentUser.role === 'shipper'`
+21. **Redirect:** If not shipper → home
+
+## 🔍 TRANSACTION DISPLAY EXAMPLES
+
+### Example 1: Shipper giao đơn COD
+**Firestore Data:**
+```js
+{
+  type: "DEBT",
+  amount: 15, // +15k
+  desc: "Đơn COD #order_123",
+  orderId: "order_abc123xyz",
+  customerName: "Nguyễn Văn B"
+}
+```
+
+**Shipper Screen Display:**
+```
+Icon: receipt (orange)
+Desc: "Đơn COD #order_123"
+Date: "27/01/2026, 10:00:00"
+Amount: -15,000đ (orange)
+```
+
+### Example 2: Admin thu tiền
+**Firestore Data:**
+```js
+{
+  type: "PAYMENT",
+  amount: -30, // -30k (reduce debt)
+  desc: "Admin thu tiền mặt"
+}
+```
+
+**Shipper Screen Display:**
+```
+Icon: receipt (if still in debt) / cash-check (if surplus)
+Desc: "Admin thu tiền mặt"
+Date: "27/01/2026, 11:00:00"
+Amount: +30,000đ (green)
+```
+
+### Example 3: Refund từ discount
+**Firestore Data:**
+```js
+{
+  type: "REFUND",
+  amount: -5, // -5k (admin owes)
+  desc: "Bù discount vượt quá adminShare",
+  orderId: "order_def456"
+}
+```
+
+**Shipper Screen Display:**
+```
+Icon: cash-check (if now surplus) / receipt (if still in debt)
+Desc: "Bù discount vượt quá adminShare"
+Date: "27/01/2026, 12:00:00"
+Amount: +5,000đ (green)
+```
+
+### Example 4: Balance progression
+**Initial:** 0đ (neutral)
+
+**After Order 1:** (+15k Firestore)
+- Display: -15,000đ (orange card)
+- Status: "BẠN ĐANG NỢ ADMIN"
+
+**After Order 2:** (+15+10=+25k Firestore)
+- Display: -25,000đ (orange card)
+- Status: "BẠN ĐANG NỢ ADMIN"
+
+**After Payment:** (+25-20=+5k Firestore)
+- Display: -5,000đ (orange card, still debt)
+- Status: "BẠN ĐANG NỢ ADMIN"
+
+**After Refund:** (+5-7=-2k Firestore)
+- Display: +2,000đ (green card, surplus!)
+- Status: "ADMIN ĐANG NỢ BẠN"
+
+## 🎯 USE CASES
+
+### 1. Shipper kiểm tra số dư trước khi nộp tiền
+- Mở app → Shipper tab → Tài chính
+- Xem balance: -150,000đ
+- Shipper chuẩn bị 150k cash để nộp cho admin
+
+### 2. Shipper theo dõi lịch sử giao đơn
+- Scroll qua transaction list
+- Xem các đơn đã giao (DEBT transactions)
+- Check desc, date, amount
+
+### 3. Shipper xác minh admin đã thu tiền
+- After nộp tiền cho admin
+- Reload screen
+- Check có PAYMENT transaction mới
+- Confirm balance giảm đúng số tiền
+
+### 4. Shipper phát hiện balance dương
+- Thấy balance card màu xanh: +20,000đ
+- Status: "ADMIN ĐANG NỢ BẠN"
+- Shipper nhắc admin trả lại 20k
+
+### 5. Shipper xem chi tiết 1 transaction
+- Currently: Không có detail view
+- Suggestion: Tap vào transaction → Show order detail
+
+## 🚨 EDGE CASES
+
+1. **No Transactions:**
+   - transactions = []
+   - displayBalance = 0
+   - FlatList empty
+   - Show "Chưa có giao dịch"
+
+2. **Zero Balance:**
+   - rawBalance = 0
+   - displayBalance = 0
+   - Card background: Orange (default)
+   - Status: "BẠN ĐANG NỢ ADMIN" (because 0 is not > 0)
+   - Fix: Should show neutral state
+
+3. **Not Shipper Role:**
+   - currentUser.role !== 'shipper'
+   - Redirect to home immediately
+   - User không thấy screen này
+
+4. **No CurrentUser:**
+   - currentUser === null
+   - Redirect to home
+   - Should redirect to login
+
+5. **Firestore Index Missing:**
+   - Query với orderBy fail
+   - Error: "Index not found"
+   - Solution: Remove orderBy, sort in JS (like admin view)
+
+6. **Large Balance:**
+   - displayBalance = -999,999k
+   - Format: "-999,999,000đ"
+   - May overflow card width
+   - Need responsive fontSize
+
+7. **Very Long Desc:**
+   - desc = "Admin thu tiền mặt tại cửa hàng lúc 10h sáng ngày 27/01/2026..."
+   - May overflow transaction row
+   - Need ellipsis: `numberOfLines={2}`
+
+8. **Date Parse Error:**
+   - Invalid createdAt string
+   - new Date(invalid) = Invalid Date
+   - toLocaleString() = "Invalid Date"
+   - Should handle error
+
+## 📝 SUGGESTED IMPROVEMENTS
+
+### 1. Zero Balance Neutral State
+```js
+const getBalanceStatus = (balance) => {
+  if (balance === 0) {
+    return {
+      color: '#95A5A6', // Gray
+      text: "KHÔNG NỢ",
+      icon: 'check-circle'
+    };
+  } else if (balance < 0) {
+    return {
+      color: '#E67E22',
+      text: "BẠN ĐANG NỢ ADMIN",
+      icon: 'receipt'
+    };
+  } else {
+    return {
+      color: '#27AE60',
+      text: "ADMIN ĐANG NỢ BẠN",
+      icon: 'cash-check'
+    };
+  }
+};
+```
+
+### 2. Transaction Detail Modal
+```js
+const [selectedTransaction, setSelectedTransaction] = useState(null);
+
+const renderItem = ({ item }) => (
+  <TouchableOpacity onPress={() => setSelectedTransaction(item)}>
+    {/* Transaction row */}
+  </TouchableOpacity>
+);
+
+<Modal visible={!!selectedTransaction}>
+  <Text>Mô tả: {selectedTransaction?.desc}</Text>
+  <Text>Mã đơn: {selectedTransaction?.orderId}</Text>
+  <Text>Khách hàng: {selectedTransaction?.customerName}</Text>
+  <Text>Số tiền: {selectedTransaction?.amount}</Text>
+  <Text>Thời gian: {selectedTransaction?.createdAt}</Text>
+  <Text>Thực hiện bởi: {selectedTransaction?.performedBy}</Text>
+  <Button onPress={() => setSelectedTransaction(null)}>Đóng</Button>
+</Modal>
+```
+
+### 3. Pull to Refresh
+```js
+const [refreshing, setRefreshing] = useState(false);
+
+const onRefresh = async () => {
+  setRefreshing(true);
+  // Firestore already realtime, just visual feedback
+  await new Promise(resolve => setTimeout(resolve, 500));
+  setRefreshing(false);
+};
+
+<FlatList 
+  refreshing={refreshing}
+  onRefresh={onRefresh}
+/>
+```
+
+### 4. Date Range Filter
+```js
+const [filter, setFilter] = useState('all'); // 'all', 'today', 'week', 'month'
+
+const filteredTransactions = useMemo(() => {
+  const now = new Date();
+  return transactions.filter(t => {
+    const date = new Date(t.createdAt);
+    switch(filter) {
+      case 'today':
+        return date.toDateString() === now.toDateString();
+      case 'week':
+        return (now - date) < 7 * 24 * 60 * 60 * 1000;
+      case 'month':
+        return date.getMonth() === now.getMonth() && 
+               date.getFullYear() === now.getFullYear();
+      default:
+        return true;
+    }
+  });
+}, [transactions, filter]);
+```
+
+### 5. Statistics Summary
+```js
+const stats = useMemo(() => {
+  const today = new Date().toDateString();
+  const todayTransactions = transactions.filter(
+    t => new Date(t.createdAt).toDateString() === today
+  );
+  
+  const debts = todayTransactions.filter(t => t.type === 'DEBT');
+  const payments = todayTransactions.filter(t => t.type === 'PAYMENT');
+  
+  return {
+    todayOrders: debts.length,
+    todayDebt: debts.reduce((sum, t) => sum + t.amount, 0) * -1,
+    todayPaid: payments.reduce((sum, t) => sum + Math.abs(t.amount), 0)
+  };
+}, [transactions]);
+
+<View style={styles.statsSection}>
+  <Text>Hôm nay: {stats.todayOrders} đơn</Text>
+  <Text>Nợ phát sinh: {(stats.todayDebt*1000).toLocaleString()}đ</Text>
+  <Text>Đã nộp: {(stats.todayPaid*1000).toLocaleString()}đ</Text>
+</View>
+```
+
+### 6. Balance History Chart
+```js
+import { LineChart } from 'react-native-chart-kit';
+
+const balanceHistory = useMemo(() => {
+  let runningBalance = 0;
+  return transactions.map(t => {
+    runningBalance += t.amount;
+    return {
+      date: t.createdAt,
+      balance: runningBalance * -1 // Flip for display
+    };
+  }).reverse(); // Oldest to newest
+}, [transactions]);
+
+<LineChart 
+  data={{
+    labels: balanceHistory.map(h => formatDate(h.date)),
+    datasets: [{ data: balanceHistory.map(h => h.balance) }]
+  }}
+/>
+```
+
+### 7. Export PDF Receipt
+```js
+import * as Print from 'expo-print';
+
+const exportReceipt = async () => {
+  const html = `
+    <h1>BIÊN NHẬN GIAO DỊCH</h1>
+    <p>Shipper: ${currentUser.name}</p>
+    <p>Số dư hiện tại: ${(displayBalance*1000).toLocaleString()}đ</p>
+    <h2>Lịch sử giao dịch</h2>
+    <table>
+      ${transactions.map(t => `
+        <tr>
+          <td>${t.desc}</td>
+          <td>${formatDate(t.createdAt)}</td>
+          <td>${((t.amount||0)*-1000).toLocaleString()}đ</td>
+        </tr>
+      `).join('')}
+    </table>
+  `;
+  
+  await Print.printAsync({ html });
+};
+```
+
+### 8. Notification Badge
+```js
+// In useAppStore
+const getUnreadTransactionCount = () => {
+  const lastSeen = localStorage.getItem('lastSeenTransaction');
+  if (!lastSeen) return 0;
+  
+  return transactions.filter(
+    t => new Date(t.createdAt) > new Date(lastSeen)
+  ).length;
+};
+
+// In Shipper tab icon
+<Icon 
+  name="wallet" 
+  badge={getUnreadTransactionCount()} 
+/>
+
+// Mark as seen when open
+useEffect(() => {
+  if (transactions.length > 0) {
+    localStorage.setItem(
+      'lastSeenTransaction', 
+      transactions[0].createdAt
+    );
+  }
+}, [transactions]);
+```
+
+### 9. Error Handling for Date
+```js
+const formatDate = (isoString) => {
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) {
+      return 'Ngày không hợp lệ';
+    }
+    return date.toLocaleString('vi-VN', {...});
+  } catch (error) {
+    console.error('Date format error:', error);
+    return 'Lỗi định dạng ngày';
+  }
+};
+```
+
+### 10. Empty State Design
+```js
+{transactions.length === 0 && !loading && (
+  <View style={styles.emptyState}>
+    <Icon name="inbox" size={64} color="#BDC3C7" />
+    <Text style={styles.emptyText}>Chưa có giao dịch nào</Text>
+    <Text style={styles.emptyHint}>
+      Giao dịch sẽ xuất hiện khi bạn giao đơn
+    </Text>
+  </View>
+)}
+```

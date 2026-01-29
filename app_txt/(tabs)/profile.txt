@@ -1,0 +1,208 @@
+# TÓM TẮT LOGIC TRANG PROFILE.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang hồ sơ cá nhân với các chức năng theo vai trò:
+- **Guest:** Hiển thị thông báo, nút đăng nhập
+- **User thường:** Xem/sửa thông tin, lịch sử đơn hàng, điểm thưởng
+- **Admin:** Truy cập trang quản trị
+- **Shop Owner:** Quản lý thực đơn (bật/tắt món)
+- **Shipper:** Bật/tắt trạng thái sẵn sàng, xem ví công nợ
+
+## 📊 STATE & DATA
+
+**Store:**
+- `currentUser`: thông tin user hiện tại
+- `foods`: danh sách món ăn (để filter myFoods)
+- `logout()`: đăng xuất
+- `updateProfile()`: cập nhật thông tin
+- `toggleFoodStatus()`: bật/tắt món
+- `ensureShipperReadyFresh()`: đồng bộ trạng thái shipper
+- `setShipperReadyToday()`: bật sẵn sàng
+- `setShipperNotReady()`: tắt sẵn sàng
+
+**Local State:**
+- `isEditing`: đang sửa thông tin
+- `name`, `address`: thông tin đang edit
+- `readyLoading`: đang cập nhật trạng thái shipper
+
+**Role Check:**
+```js
+const isGuestUser = currentUser && !currentUser.password;
+const isAdmin = !isGuestUser && currentUser?.role === 'admin';
+const isShopOwner = !isGuestUser && (currentUser?.role === 'chủ shop' || currentUser?.role === 'admin');
+const isShipper = !isGuestUser && currentUser?.role === 'shipper';
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### Guest Flow
+1. Hiển thị avatar "?", tên "Khách vãng lai", ID
+2. Hiển thị thông báo "Đăng ký tài khoản để tích điểm"
+3. Nút "ĐĂNG NHẬP NGAY" → navigate `/login`
+
+### User Flow
+1. Hiển thị avatar (chữ cái đầu), tên, SĐT, điểm
+2. Thông tin cá nhân: Xem hoặc SỬA (name, address)
+3. Nút "Lịch sử đơn hàng" → navigate `/orders`
+4. Nút "ĐĂNG XUẤT" → logout → `/login`
+
+### Admin Flow
+(User flow +)
+5. Thẻ "Quản trị hệ thống" → navigate `/admin`
+
+### Shop Owner Flow
+(User flow +)
+6. Thẻ "Quản lý thực đơn"
+7. Danh sách món của shop (filter theo `shopId === currentUser.id`)
+8. Mỗi món có Switch bật/tắt (`status: enable/disable`)
+
+### Shipper Flow
+(User flow +)
+9. Thẻ "Góc Shipper"
+10. Switch "Trạng thái sẵn sàng hôm nay"
+11. Nút "Ví công nợ & Tài chính" → navigate `/shipper/finance`
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleToggleFood(food)`
+Bật/tắt trạng thái món:
+```js
+const result = await toggleFoodStatus(food.id, food.status);
+if (!result.success) console.log("Lỗi cập nhật trạng thái");
+```
+
+### `handleToggleReady()`
+Bật/tắt trạng thái sẵn sàng shipper:
+```js
+setReadyLoading(true);
+await ensureShipperReadyFresh(); // Đồng bộ trước
+const action = currentUser?.isReady ? setShipperNotReady : setShipperReadyToday;
+const result = await action();
+setReadyLoading(false);
+```
+
+### `handleSaveProfile()`
+Lưu thông tin profile:
+```js
+if (isGuestUser) return;
+const res = await updateProfile({ name, address });
+if (res.success) setIsEditing(false);
+```
+
+### `handleAuthAction()`
+Đăng xuất hoặc đăng nhập:
+```js
+await logout();
+router.replace('/login');
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Avatar (chữ cái hoặc "?")
+  │   └─ Info
+  │       ├─ Name (hoặc "Khách vãng lai")
+  │       ├─ Phone (hoặc ID guest)
+  │       ├─ Point Tag (nếu không phải guest)
+  │       └─ Role
+  │
+  └─ ScrollView (Content)
+      ├─ Guest Notice (nếu guest)
+      │
+      ├─ Card: Thông tin cá nhân
+      │   ├─ Header: Title + Nút SỬA/LƯU
+      │   └─ Body:
+      │       ├─ isEditing: 2 MyInput (name, address)
+      │       └─ !isEditing: 2 Row (person, location)
+      │
+      ├─ Card: Lịch sử đơn hàng → /orders
+      │
+      ├─ Card: Quản trị hệ thống (isAdmin) → /admin
+      │
+      ├─ Card: Góc Shipper (isShipper)
+      │   ├─ Switch: Trạng thái sẵn sàng
+      │   └─ Nút: Ví công nợ → /shipper/finance
+      │
+      ├─ Card: Quản lý thực đơn (isShopOwner)
+      │   └─ Danh sách món (Image + Name + Price + Switch)
+      │
+      └─ Button: ĐĂNG XUẤT / ĐĂNG NHẬP NGAY
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Guest Detection:** `currentUser && !currentUser.password`
+2. **Multi-role Support:** Admin, Shop Owner, Shipper, User thường, Guest
+3. **Conditional UI:** Hiển thị các section khác nhau tùy role
+4. **Realtime Shipper Status:** Gọi `ensureShipperReadyFresh()` trong useEffect
+5. **Food List Filter:** `foods.filter(f => f.shopId === currentUser?.id)`
+6. **Switch Color Coding:**
+   - Food: trackColor false=#767577, true=COLORS.primary
+   - Shipper: trackColor false=#E0E0E0, true=#81C784
+7. **Avatar Letter:** `currentUser?.name?.charAt(0)?.toUpperCase()`
+8. **Point Display:** `currentUser?.point || 0` điểm
+9. **Guest Notice:** Background #FFF4E5, icon information-circle
+10. **Border Left Color:** Admin card có border màu #2E7D32, Shipper card màu #E67E22
+
+## 🚀 USER JOURNEY
+
+### Guest
+1. Vào Profile → Thấy avatar "?", ID guest
+2. Thông báo: "Đăng ký để tích điểm"
+3. Nhấn "ĐĂNG NHẬP NGAY" → Login page
+
+### User thường
+1. Vào Profile → Thấy tên, SĐT, điểm
+2. Nhấn "SỬA" → Edit name/address → "LƯU"
+3. Nhấn "Lịch sử đơn hàng" → Orders page
+4. Nhấn "ĐĂNG XUẤT" → Login page
+
+### Admin
+(User flow +)
+5. Nhấn "Quản trị hệ thống" → Admin dashboard
+
+### Shop Owner
+(User flow +)
+6. Xem danh sách món của mình
+7. Toggle Switch để bật/tắt món
+
+### Shipper
+(User flow +)
+8. Toggle Switch "Sẵn sàng hôm nay" (cần bật để nhận đơn)
+9. Nhấn "Ví công nợ & Tài chính" → Shipper finance page
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/login` (đăng xuất hoặc nút đăng nhập guest)
+- `/orders` (lịch sử đơn hàng)
+- `/admin` (quản trị - admin only)
+- `/shipper/finance` (ví nợ - shipper only)
+
+**Navigates FROM:**
+- Bottom tab navigation
+- Shipper tab (nút "Bật sẵn sàng" trong not-ready notice)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Guest Logic:** Không cho edit profile, không có điểm
+2. **Role Hierarchy:** Admin cũng là Shop Owner (có thể quản lý món)
+3. **isReady Flag:** Shipper cần bật `isReady = true` để nhận đơn trong shipper tab
+4. **readyDate:** Lưu ngày bật sẵn sàng (format: YYYY-MM-DD)
+5. **ensureShipperReadyFresh():** Đảm bảo trạng thái isReady được reset nếu qua ngày mới
+6. **toggleFoodStatus():** Cập nhật Firestore `foods/{foodId}` → `status: enable/disable`
+7. **updateProfile():** Cập nhật Firestore `users/{userId}` → `{ name, address }`
+8. **Price Display:**
+   ```js
+   const priceNormal = (food.priceNormal || 0) * 1000;
+   const pricePromo = (food.pricePromo || 0) * 1000;
+   ```
+9. **Switch Value:** `value={food.status === 'enable'}` hoặc `value={currentUser?.isReady || false}`
+10. **Loading Disable:** Switch shipper disabled khi `readyLoading = true`
+11. **MyInput Component:** Import từ `../../src/components/MyUI`
+12. **Food Image:** Fallback `https://via.placeholder.com/150` nếu không có
+13. **Guest ID Display:** `ID: ${currentUser?.id}` thay vì số điện thoại
+14. **Point Tag:** Icon ribbon + text điểm + background #Fdf2f2
+15. **Logout Button Color:** Guest: #2E7D32 (xanh lá), User: #FF4747 (đỏ)

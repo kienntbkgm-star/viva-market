@@ -1,12 +1,14 @@
 // @ts-nocheck
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  collection,
-  doc,
-  onSnapshot,
-  query,
-  setDoc,
-  updateDoc
+    arrayUnion,
+    collection,
+    doc,
+    getDoc,
+    onSnapshot,
+    query,
+    setDoc,
+    updateDoc
 } from 'firebase/firestore';
 import { create } from 'zustand';
 import { db } from '../services/firebase';
@@ -28,7 +30,8 @@ export const useAppStore = create((set, get) => ({
   services: [],
   system: null,
   users: [],
-  transactions: [], 
+  transactions: [],
+  onlineLog: [],  // 🆕 Thêm onlineLog để track user online/offline
   
   currentUser: null,
   isGuest: false, 
@@ -42,6 +45,208 @@ export const useAppStore = create((set, get) => ({
   // ==========================================
   
   setExpoToken: (token) => set({ expoToken: token }),
+
+  // ==========================================
+  // ONLINE/OFFLINE TRACKING
+  // ==========================================
+
+  logOnlineToLocal: async () => {
+    try {
+      const { currentUser } = get();
+      if (!currentUser || !currentUser.id) return;
+      
+      const userId = currentUser.id.toString();
+      const timestamp = Date.now();
+      
+      // Lưu timestamp online vào special key để tính duration sau
+      const onlineTimestampKey = `last_online_timestamp_${userId}`;
+      await AsyncStorage.setItem(onlineTimestampKey, timestamp.toString());
+      
+      // Update isOnline và lastOnlineTimestamp vào Firestore onlineLog
+      const onlineLogRef = doc(db, 'onlineLog', userId);
+      const docSnap = await getDoc(onlineLogRef);
+      
+      if (docSnap.exists()) {
+        await updateDoc(onlineLogRef, {
+          isOnline: true,
+          lastOnlineTimestamp: timestamp
+        });
+      } else {
+        await setDoc(onlineLogRef, {
+          id: userId,
+          isOnline: true,
+          lastOnlineTimestamp: timestamp,
+          log: []
+        });
+      }
+      
+      console.log(`[Online Log] 🟢 Online: ${timestamp} | isOnline=true`);
+    } catch (error) {
+      console.error('[Online Log] Lỗi ghi local:', error);
+    }
+  },
+
+  logOfflineAndUpload: async () => {
+    try {
+      const { currentUser } = get();
+      if (!currentUser || !currentUser.id) return;
+      
+      const userId = currentUser.id.toString();
+      const offlineTimestamp = Date.now();
+      
+      // Lấy timestamp online
+      const onlineTimestampKey = `last_online_timestamp_${userId}`;
+      const onlineTimestampStr = await AsyncStorage.getItem(onlineTimestampKey);
+      const onlineTimestamp = onlineTimestampStr ? Number(onlineTimestampStr) : null;
+      
+      if (!onlineTimestamp) {
+        console.warn('[Offline Log] ⚠️ Không tìm thấy online timestamp');
+        return;
+      }
+      
+      // Tính duration (ms → s)
+      const durationSeconds = Math.floor((offlineTimestamp - onlineTimestamp) / 1000);
+      const logEntry = `${onlineTimestamp}-${durationSeconds}`;
+      
+      // Đọc logs hiện tại
+      const storageKey = `pending_logs_${userId}`;
+      const existingLogs = await AsyncStorage.getItem(storageKey);
+      let logs = existingLogs ? JSON.parse(existingLogs) : [];
+      
+      // Thêm log mới
+      logs.push(logEntry);
+      
+      console.log(`[Offline Log] ⏸️ Session: ${onlineTimestamp}-${durationSeconds}s | Chuẩn bị upload ${logs.length} entries...`);
+      
+      // Trim logs: giữ 100 entry cuối, xóa cái cũ (FIFO)
+      const MAX_LOGS = 100;
+      if (logs.length > MAX_LOGS) {
+        const trimmedLogs = logs.slice(-MAX_LOGS);
+        console.log(`[Offline Log] ✂️ Trim logs: ${logs.length} → ${trimmedLogs.length} (xóa ${logs.length - MAX_LOGS} entries cũ)`);
+        logs = trimmedLogs;
+      }
+      
+      // Upload lên Firestore + set isOnline=false
+      const docRef = doc(db, 'onlineLog', userId);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        // Document đã tồn tại → append log + set offline
+        await updateDoc(docRef, {
+          log: arrayUnion(...logs),
+          isOnline: false
+        });
+      } else {
+        // Document chưa tồn tại → tạo mới
+        await setDoc(docRef, {
+          id: userId,
+          isOnline: false,
+          lastOnlineTimestamp: onlineTimestamp,
+          log: logs
+        });
+      }
+      
+      console.log(`[Offline Log] ✅ Upload ${logs.length} entries | isOnline=false`);
+      
+      // Xóa local storage sau khi upload thành công
+      await AsyncStorage.removeItem(storageKey);
+      await AsyncStorage.removeItem(onlineTimestampKey);
+      console.log('[Offline Log] 🗑️ Đã clear local storage');
+      
+    } catch (error) {
+      console.error('[Offline Log] ❌ Lỗi upload (giữ logs local để retry):', error.message);
+      // Không xóa local storage nếu upload lỗi → retry lần sau khi inactive
+    }
+  },
+
+  checkCrashOnRestart: async () => {
+    try {
+      const { currentUser } = get();
+      if (!currentUser || !currentUser.id) return;
+      
+      const userId = currentUser.id.toString();
+      const onlineTimestampKey = `last_online_timestamp_${userId}`;
+      const onlineTimestampStr = await AsyncStorage.getItem(onlineTimestampKey);
+      
+      if (!onlineTimestampStr) {
+        console.log('[Crash Check] ✅ Không có crash (online timestamp = null)');
+        return;
+      }
+      
+      // Phát hiện crash! Online timestamp tồn tại nhưng ko có offline
+      const onlineTimestamp = Number(onlineTimestampStr);
+      const crashLogEntry = `${onlineTimestamp}-0`; // Duration = 0 = crash
+      
+      // Đọc logs hiện tại
+      const storageKey = `pending_logs_${userId}`;
+      const existingLogs = await AsyncStorage.getItem(storageKey);
+      let logs = existingLogs ? JSON.parse(existingLogs) : [];
+      
+      // Thêm crash log
+      logs.push(crashLogEntry);
+      await AsyncStorage.setItem(storageKey, JSON.stringify(logs));
+      
+      console.log(`[Crash Check] 💥 CRASH DETECTED! Đã thêm: ${crashLogEntry} | Logs: ${logs.length} entries`);
+      
+    } catch (error) {
+      console.error('[Crash Check] Lỗi kiểm tra crash:', error);
+    }
+  },
+
+  // ==========================================
+  // SHIPPER READY (reset mỗi ngày)
+  // ==========================================
+
+  ensureShipperReadyFresh: async () => {
+    try {
+      const { currentUser } = get();
+      if (!currentUser || (currentUser.role !== 'shipper' && currentUser.role !== 'chủ shop')) return;
+
+      const today = new Date().toISOString().slice(0, 10);
+      const isStale = currentUser.isReady === true && currentUser.readyDate !== today;
+      if (!isStale) return;
+
+      const userRef = doc(db, 'users', currentUser.id.toString());
+      await updateDoc(userRef, { isReady: false, readyDate: null });
+      set((state) => ({ currentUser: { ...state.currentUser, isReady: false, readyDate: null } }));
+      console.log('[Ready Status] Reset isReady=false do khác ngày');
+    } catch (error) {
+      console.error('[Ready Status] Lỗi reset ready:', error);
+    }
+  },
+
+  setShipperReadyToday: async () => {
+    try {
+      const { currentUser } = get();
+      if (!currentUser || (currentUser.role !== 'shipper' && currentUser.role !== 'chủ shop')) return { success: false };
+
+      const today = new Date().toISOString().slice(0, 10);
+      const userRef = doc(db, 'users', currentUser.id.toString());
+      await updateDoc(userRef, { isReady: true, readyDate: today });
+      set((state) => ({ currentUser: { ...state.currentUser, isReady: true, readyDate: today } }));
+      console.log('[Ready Status] ✅ Đã bật ready cho hôm nay');
+      return { success: true };
+    } catch (error) {
+      console.error('[Ready Status] Lỗi bật ready:', error);
+      return { success: false, message: error.message };
+    }
+  },
+
+  setShipperNotReady: async () => {
+    try {
+      const { currentUser } = get();
+      if (!currentUser || (currentUser.role !== 'shipper' && currentUser.role !== 'chủ shop')) return { success: false };
+
+      const userRef = doc(db, 'users', currentUser.id.toString());
+      await updateDoc(userRef, { isReady: false, readyDate: null });
+      set((state) => ({ currentUser: { ...state.currentUser, isReady: false, readyDate: null } }));
+      console.log('[Ready Status] ⛔ Đã tắt sẵn sàng thủ công');
+      return { success: true };
+    } catch (error) {
+      console.error('[Ready Status] Lỗi tắt ready:', error);
+      return { success: false, message: error.message };
+    }
+  },
 
   initializeGuest: async () => {
     try {
@@ -147,11 +352,16 @@ export const useAppStore = create((set, get) => ({
         set({ transactions: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
     });
 
+    // 🆕 Listener cho onlineLog (user online/offline tracking)
+    const unsubOnlineLog = onSnapshot(query(collection(db, 'onlineLog')), (snap) => {
+      set({ onlineLog: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+    });
+
     return () => {
       unsubFoods(); unsubSystem(); unsubUsers(); unsubPromos();
       unsubFoodOrders(); unsubGoods(); unsubGoodOrders();
       unsubItemType(); unsubServices(); unsubServiceOrders();
-      unsubTransactions();
+      unsubTransactions(); unsubOnlineLog();
     };
   },
 
@@ -170,6 +380,10 @@ export const useAppStore = create((set, get) => ({
         await updateDoc(doc(db, 'users', userFound.id.toString()), { expoToken });
       } catch (err) { console.error("Lỗi cập nhật Token:", err); }
     }
+    
+    // Ghi log online sau khi login thành công
+    get().logOnlineToLocal();
+    
     return { success: true };
   },
 
@@ -198,9 +412,24 @@ export const useAppStore = create((set, get) => ({
   logout: async () => {
     try {
       const { currentUser } = get();
+      
+      // Ghi log offline trước khi logout
       if (currentUser?.id) {
-        updateDoc(doc(db, 'users', currentUser.id.toString()), { expoToken: "" }).catch(() => {});
+        await get().logOfflineAndUpload();
+        
+        // Nếu là shipper và đang ready, tắt trạng thái ready
+        if (currentUser.role === 'shipper' && currentUser.isReady) {
+          await updateDoc(doc(db, 'users', currentUser.id.toString()), { 
+            expoToken: "",
+            isReady: false,
+            readyDate: null
+          });
+          console.log('[Logout] Đã tắt trạng thái ready cho shipper');
+        } else {
+          await updateDoc(doc(db, 'users', currentUser.id.toString()), { expoToken: "" }).catch(() => {});
+        }
       }
+      
       // Xóa session khỏi AsyncStorage
       await AsyncStorage.removeItem('logged_user_id');
       await AsyncStorage.removeItem('guest_user_id');
@@ -277,6 +506,7 @@ export const useAppStore = create((set, get) => ({
   },
 
   removeFromCart: (cartItemId) => {
+
     const currentCart = get().cart;
     const updatedCart = currentCart.map((item) => {
       if (item.cartItemId === cartItemId) {

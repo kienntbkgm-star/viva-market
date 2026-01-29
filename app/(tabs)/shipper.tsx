@@ -4,18 +4,30 @@ import { useRouter } from 'expo-router';
 import { addDoc, arrayUnion, collection, doc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    FlatList,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
+
+// Tính realtime extraStepFee từ multiShopFee
+const calculateExtraStepFee = (order) => {
+  if (!order.items || order.items.length === 0) return 0;
+  
+  const activeItems = order.items.filter(item => !item.itemStatus || item.itemStatus === 'active');
+  const shopIds = new Set(activeItems.map(item => item.shopId));
+  const shopCount = shopIds.size;
+  const multiShopFee = order.multiShopFee || 0;
+  
+  return shopCount > 1 ? (shopCount - 1) * multiShopFee : 0;
+};
 
 export default function ShipperTabScreen() {
   const router = useRouter();
@@ -25,7 +37,11 @@ export default function ShipperTabScreen() {
   const shipperRatio = system?.money?.shipperShipRatio || 70;
   const adminRatio = 100 - shipperRatio;
 
-  const availableOrders = foodOrders.filter(order => order.status === 'pending');
+  const availableOrders = foodOrders.filter(order => 
+    order.status === 'pending' && 
+    !order.isResidentShop && 
+    order.deliveryType !== 'self-delivery'
+  );
   const myOrders = foodOrders.filter(order => 
     order.status === 'processing' && order.shipperId === currentUser?.id
   );
@@ -34,6 +50,16 @@ export default function ShipperTabScreen() {
   );
 
   const handleReceiveOrder = async (item) => {
+    // Kiểm tra shipper đã bật sẵn sàng chưa
+    if (!currentUser?.isReady) {
+      if (Platform.OS === 'web') {
+        window.alert("Bạn cần bật trạng thái 'Sẵn sàng' trong Hồ sơ trước khi nhận đơn!");
+      } else {
+        Alert.alert("Chưa sẵn sàng", "Vui lòng bật trạng thái 'Sẵn sàng' trong Hồ sơ trước khi nhận đơn!");
+      }
+      return;
+    }
+
     try {
       const orderRef = doc(db, 'foodOrders', item.id || item.orderId);
       await updateDoc(orderRef, {
@@ -55,7 +81,8 @@ export default function ShipperTabScreen() {
 
   const handleCompleteOrder = async (item) => {
     try {
-      const totalShip = (item.baseShip || 0) + (item.extraStepFee || 0);
+      const extraStepFee = calculateExtraStepFee(item);
+      const totalShip = (item.baseShip || 0) + extraStepFee;
       const adminShare = (totalShip * adminRatio) / 100;
       const discount = item.discount || 0;
 
@@ -74,7 +101,7 @@ export default function ShipperTabScreen() {
 
       if (item.paymentMethod === 'COD') {
         await addDoc(collection(db, 'transactions'), {
-            userId: currentUser.id,
+            userId: Number(currentUser.id),
             userName: currentUser.name,
             type: 'DEBT',
             amount: netDebt,
@@ -95,24 +122,37 @@ export default function ShipperTabScreen() {
   };
 
   const renderOrderItem = ({ item }) => {
+    const isAvailable = activeTab === 'available';
     const isProcessing = activeTab === 'my_orders';
     const isCompleted = activeTab === 'completed';
+    const isMyOrder = item.shipperId === currentUser?.id;
 
-    const totalShip = (item.baseShip || 0) + (item.extraStepFee || 0);
+    const extraStepFee = calculateExtraStepFee(item);
+    const totalShip = (item.baseShip || 0) + extraStepFee;
     const shipperEarn = (totalShip * shipperRatio) / 100;
     const adminShare = (totalShip * adminRatio) / 100;
     const debtAmount = adminShare - (item.discount || 0);
+    
+    // Tính finalTotal realtime
+    const activeItems = item.items?.filter(i => !i.itemStatus || i.itemStatus === 'active') || [];
+    const totalFood = activeItems.reduce((sum, i) => {
+      const basePrice = i.pricePromo || 0;
+      const optionsPrice = (i.selectedOptions || []).reduce((s, opt) => s + (opt.price || 0), 0);
+      return sum + (basePrice + optionsPrice) * i.quantity;
+    }, 0);
+    const finalTotal = totalFood + (item.baseShip || 0) + extraStepFee - (item.discount || 0);
 
     return (
       <TouchableOpacity 
         style={styles.orderCard}
-        onPress={() => router.push({ 
-            pathname: '/admin/order-detail', 
+        onPress={() => {
+          router.push({ 
+            pathname: '/shipper/order-detail', 
             params: { orderId: item.orderId || item.id } 
-        })}
+          });
+        }}
       >
         <View style={styles.orderHeader}>
-          {/* HIỂN THỊ FULL ID TRÊN THẺ ĐƠN HÀNG */}
           <Text style={styles.orderId}>#{item.orderId || item.id}</Text>
           <Text style={styles.timeText}>{new Date(item.createdAt).toLocaleTimeString('vi-VN')}</Text>
         </View>
@@ -120,17 +160,21 @@ export default function ShipperTabScreen() {
         <View style={styles.addressBox}>
             <View style={styles.addressLine}>
                 <Ionicons name="person-outline" size={14} color="#666"/>
-                <Text style={styles.userName}>{item.userName} - {item.userPhone}</Text>
+                <Text style={styles.userName}>
+                  {isAvailable ? '******' : `${item.userName} - ${item.userPhone}`}
+                </Text>
             </View>
             <View style={styles.addressLine}>
                 <Ionicons name="location-outline" size={14} color={COLORS.primary}/>
-                <Text style={styles.addressText} numberOfLines={2}>{item.address}</Text>
+                <Text style={styles.addressText} numberOfLines={2}>
+                  {isAvailable ? '******' : item.address}
+                </Text>
             </View>
         </View>
 
         <View style={styles.orderFooter}>
           <View>
-            <Text style={styles.totalPrice}>Thu khách: {((item.finalTotal || 0) * 1000).toLocaleString()}đ</Text>
+            <Text style={styles.totalPrice}>Thu khách: {(finalTotal * 1000).toLocaleString()}đ</Text>
             {(isProcessing || isCompleted) && (
                 <View style={{marginTop: 4}}>
                     <Text style={styles.earningText}>Công: {(shipperEarn * 1000).toLocaleString()}đ</Text>
@@ -187,12 +231,28 @@ export default function ShipperTabScreen() {
         ))}
       </View>
 
-      <FlatList
-        data={activeTab === 'available' ? availableOrders : (activeTab === 'my_orders' ? myOrders : completedOrders)}
-        keyExtractor={(item) => item.id}
-        renderItem={renderOrderItem}
-        contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
-      />
+      {activeTab === 'available' && !currentUser?.isReady ? (
+        <View style={styles.notReadyContainer}>
+          <Ionicons name="alert-circle-outline" size={60} color="#E67E22" />
+          <Text style={styles.notReadyTitle}>Bạn chưa bật trạng thái sẵn sàng</Text>
+          <Text style={styles.notReadyDesc}>
+            Vui lòng bật "Sẵn sàng hôm nay" trong Hồ sơ để xem và nhận đơn từ Sảnh đơn
+          </Text>
+          <TouchableOpacity 
+            style={styles.goToProfileBtn}
+            onPress={() => router.push('/profile')}
+          >
+            <Text style={styles.goToProfileBtnText}>ĐI ĐẾN HỒ SƠ</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={activeTab === 'available' ? availableOrders : (activeTab === 'my_orders' ? myOrders : completedOrders)}
+          keyExtractor={(item) => item.id}
+          renderItem={renderOrderItem}
+          contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -208,6 +268,13 @@ const styles = StyleSheet.create({
   activeTab: { borderBottomColor: COLORS.primary },
   tabText: { fontWeight: 'bold', color: '#999' },
   activeTabText: { color: COLORS.primary },
+  readyWarning: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFEBEE', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 5, gap: 5 },
+  readyWarningText: { fontSize: 11, color: '#D32F2F', fontWeight: '600' },
+  notReadyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30 },
+  notReadyTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginTop: 15, textAlign: 'center' },
+  notReadyDesc: { fontSize: 13, color: '#666', textAlign: 'center', marginTop: 10, lineHeight: 20 },
+  goToProfileBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 30, paddingVertical: 12, borderRadius: 15, marginTop: 20 },
+  goToProfileBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   orderCard: { backgroundColor: '#fff', borderRadius: 20, padding: 15, marginBottom: 15, elevation: 3 },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   orderId: { fontWeight: 'bold', color: '#333' },

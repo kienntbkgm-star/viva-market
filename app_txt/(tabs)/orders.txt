@@ -1,0 +1,179 @@
+# TÓM TẮT LOGIC TRANG ORDERS.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang lịch sử đơn hàng thức ăn của user hiện tại:
+- Hiển thị tất cả đơn hàng food theo userId
+- Xem chi tiết từng đơn: món ăn, giá, phí ship, log hành trình
+- Hủy đơn hàng (chỉ khi status = pending/pendding)
+- Realtime update từ Firestore
+- Sắp xếp đơn theo ưu tiên: pending → confirmed → shipping → completed → cancelled
+
+## 📊 STATE & DATA
+
+**Store:**
+- `currentUser`: thông tin user hiện tại (lấy userId để query)
+
+**Local State:**
+- `orders`: danh sách đơn hàng food của user (realtime từ Firestore)
+- `loading`: trạng thái đang tải
+
+**Firestore Listener:**
+Query đơn hàng theo `userId = currentUser.id` từ collection `foodOrders`, sắp xếp theo `createdAt desc`
+
+## 🔄 LUỒNG THỰC THI
+
+1. **Load dữ liệu:**
+   - Lấy `currentUser.id`
+   - Query Firestore: `where('userId', '==', targetId)` + `orderBy('createdAt', 'desc')`
+   - Realtime listener: `onSnapshot()`
+2. **Sắp xếp đơn:**
+   - Priority: pending(1) → confirmed(2) → shipping(3) → completed(4) → cancelled(5)
+   - Nếu cùng priority thì sắp xếp theo `createdAt` giảm dần
+3. **Hiển thị đơn:** FlatList với renderOrderItem
+4. **Hủy đơn:** Chỉ cho phép khi status = pending/pendding
+   - Hiện confirm dialog
+   - Update Firestore: `status = 'cancelled'` + thêm log
+5. **Real-time update:** Mỗi khi có thay đổi trên Firestore → update UI
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `formatCurrency(val)`
+Chuyển đổi số sang định dạng VNĐ:
+```js
+(val * 1000).toLocaleString('vi-VN')
+```
+
+### `getStatusColor(status)`
+Trả về màu sắc cho từng trạng thái:
+- `pending/pendding` → #F39C12 (cam)
+- `confirmed` → #3498DB (xanh dương)
+- `shipping` → #9B59B6 (tím)
+- `completed` → #27AE60 (xanh lá)
+- `cancelled` → #E74C3C (đỏ)
+
+### `getStatusText(status)`
+Chuyển đổi status code sang text tiếng Việt:
+- `pending/pendding` → "Chờ xác nhận"
+- `confirmed` → "Đang chuẩn bị"
+- `shipping` → "Đang giao hàng"
+- `completed` → "Đã hoàn thành"
+- `cancelled` → "Đã hủy"
+
+### `handleCancelOrder(order)`
+Logic hủy đơn:
+```js
+if (status !== 'pending' && status !== 'pendding') return;
+// Confirm dialog
+await updateDoc(orderRef, {
+  status: 'cancelled',
+  logs: arrayUnion({
+    time: new Date().toISOString(),
+    content: currentUser ? "Người dùng đã hủy đơn hàng" : "Khách vãng lai đã hủy đơn hàng",
+    status: 'cancelled'
+  })
+});
+```
+
+### Logic sắp xếp đơn hàng
+```js
+const priority = { 'pending': 1, 'pendding': 1, 'confirmed': 2, 'shipping': 3, 'completed': 4, 'cancelled': 5 };
+const pA = priority[a.status?.toLowerCase()] || 99;
+const pB = priority[b.status?.toLowerCase()] || 99;
+if (pA !== pB) return pA - pB;
+return new Date(b.createdAt) - new Date(a.createdAt);
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button (arrow-back)
+  │   └─ Title: "Đơn hàng của tôi"
+  │
+  └─ FlatList (orders)
+      └─ renderOrderItem: Order Card
+          ├─ Order Header
+          │   ├─ Mã đơn
+          │   ├─ Thời gian tạo
+          │   └─ Nút "Hủy" (nếu pending)
+          │
+          ├─ Status Badge (màu theo status)
+          │
+          ├─ Item Section
+          │   └─ Danh sách món: "• Name x Quantity"
+          │
+          ├─ Price Section
+          │   ├─ Tiền món
+          │   ├─ Phí vận chuyển gốc
+          │   ├─ Phí thêm shop (nếu > 1 shop)
+          │   ├─ Giảm giá (nếu có)
+          │   └─ Tổng thanh toán
+          │
+          └─ Log Section (Hành trình đơn hàng)
+              └─ Danh sách logs: Dot + Time + Content
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Realtime Listener:** Dùng `onSnapshot()` để tự động update khi có thay đổi
+2. **Status Normalization:** Xử lý cả "pending" và "pendding" (lỗi typo trong DB)
+3. **Cancel Permission:** Chỉ cho hủy đơn khi status = pending/pendding
+4. **Log Color Coding:** Mỗi log có màu dot theo status (pending/cancelled/completed)
+5. **Priority Sorting:** Đơn pending luôn lên đầu, completed/cancelled xuống dưới
+6. **Empty State:** Hiển thị icon + text "Bạn chưa có đơn hàng nào"
+7. **Loading State:** ActivityIndicator khi đang query Firestore
+8. **Platform-specific Confirm:** Web dùng `window.confirm()`, native dùng `Alert.alert()`
+9. **Order ID Display:** Ưu tiên `orderId`, fallback sang `id.substring(0,8)`
+10. **Back Navigation:** Nút back về trang trước (`router.back()`)
+
+## 🚀 USER JOURNEY
+
+**User thường:**
+1. Vào Orders (từ profile hoặc bottom tab)
+2. Xem danh sách đơn hàng (pending ở trên)
+3. Nhấn nút "Hủy" nếu muốn hủy đơn pending
+4. Xác nhận dialog → Đơn chuyển sang cancelled
+5. Xem chi tiết món, giá, log hành trình
+6. Nhấn Back để quay lại
+
+**Khách vãng lai:**
+(Tương tự user thường, nếu đã có đơn từ session hiện tại)
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- (Chưa navigate đi đâu từ trang này, chỉ hiển thị)
+
+**Navigates FROM:**
+- `/profile` (nút "Lịch sử đơn hàng")
+- Bottom tab navigation
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Query condition:**
+   ```js
+   where('userId', '==', targetId)
+   orderBy('createdAt', 'desc')
+   ```
+2. **Listener cleanup:** Return `unsubscribe()` trong useEffect để tránh memory leak
+3. **Status lowercase:** Luôn chuyển về lowercase trước khi so sánh
+4. **Time format:**
+   ```js
+   new Date(createdAt).toLocaleString('vi-VN')
+   new Date(log.time).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})
+   ```
+5. **Firestore update với arrayUnion:**
+   ```js
+   await updateDoc(orderRef, {
+     status: 'cancelled',
+     logs: arrayUnion({ time, content, status })
+   });
+   ```
+6. **Loading timeout:** Nếu không có user, set timeout 2s rồi tắt loading
+7. **Error handling:** Catch lỗi query và set loading = false
+8. **Log structure:** `{ time: ISO string, content: string, status: string }`
+9. **Order structure:** `{ id, orderId, userId, userName, userPhone, address, items[], totalFood, baseShip, extraStepFee, discount, finalTotal, shipType, status, paymentMethod, createdAt, isGuest, promoCode, logs[] }`
+10. **numberOfLines:** Món ăn truncate với `numberOfLines={1}`
+11. **Status priority map:** Hardcode trong component, không lưu trong DB
+12. **Small cancel button:** Nhỏ gọn, chỉ text "Hủy", border đỏ

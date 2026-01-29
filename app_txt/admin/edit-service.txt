@@ -1,0 +1,493 @@
+# TÓM TẮT LOGIC TRANG ADMIN/EDIT-SERVICE.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình thêm/sửa dịch vụ (repair & cleaning):
+- Thêm dịch vụ mới hoặc cập nhật dịch vụ có sẵn
+- Cấu hình giá, % chia sẻ admin (moneyShare)
+- Quản lý trạng thái, thứ tự hiển thị
+- Đơn giản hơn edit-food (không có options, không upload ảnh)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `services`: Danh sách dịch vụ (load để edit)
+
+**Route Params:**
+- `id`: ID dịch vụ (nếu edit), undefined nếu tạo mới
+
+**Local State:**
+```js
+loading: boolean // Trạng thái đang save
+formData: {
+  name: string,
+  priceNormal: string,    // Giá gốc (k)
+  pricePromo: string,     // Giá bán (k)
+  moneyShare: string,     // % cho Admin (VD: "20")
+  image: string,          // URL ảnh (nhập tay)
+  status: 'enable' | 'disable',
+  index: string,          // Thứ tự hiển thị
+  shopId: string,         // Mặc định 209 (shop dịch vụ)
+  note: string
+}
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load Data (Edit Mode)
+```js
+useEffect(() => {
+  if (id && services) {
+    const service = services.find(s => s.id === id);
+    if (service) {
+      setFormData({
+        ...service,
+        priceNormal: service.priceNormal?.toString() || '',
+        pricePromo: service.pricePromo?.toString() || '',
+        moneyShare: service.moneyShare?.toString() || '0',
+        index: service.index?.toString() || '0',
+        shopId: service.shopId?.toString() || '209'
+      });
+    }
+  }
+}, [id, services]);
+```
+
+### 2. Save to Firestore
+```js
+const handleSave = async () => {
+  // Validation
+  if (!formData.name || !formData.pricePromo || !formData.image) {
+    Alert.alert("Lỗi", "Vui lòng nhập Tên, Giá bán và Link ảnh dịch vụ");
+    return;
+  }
+  
+  setLoading(true);
+  
+  try {
+    const serviceId = id || Date.now().toString();
+    const serviceRef = doc(db, 'services', serviceId);
+    
+    const finalData = {
+      ...formData,
+      id: isNaN(Number(serviceId)) ? serviceId : Number(serviceId),
+      name: formData.name.trim(),
+      priceNormal: Number(formData.priceNormal),
+      pricePromo: Number(formData.pricePromo),
+      moneyShare: Number(formData.moneyShare), // % cho Admin
+      index: Number(formData.index),
+      shopId: Number(formData.shopId),
+      status: formData.status,
+      log: [] // Reset log array
+    };
+    
+    if (id) {
+      await updateDoc(serviceRef, finalData);
+    } else {
+      await setDoc(serviceRef, finalData, { merge: true });
+    }
+    
+    Alert.alert("Thành công", "Đã lưu thông tin dịch vụ");
+    router.back();
+  } catch (error) {
+    Alert.alert("Lỗi", "Không thể lưu dữ liệu: " + error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### No Image Upload Function
+- Khác với edit-food, không có upload ảnh
+- User nhập trực tiếp URL ảnh (từ Imgur, ImgBB, v.v.)
+- Lý do: Dịch vụ ít ảnh hơn, có thể dùng ảnh có sẵn
+
+### Number Parsing
+```js
+// Convert string → number before save
+priceNormal: Number(formData.priceNormal)
+pricePromo: Number(formData.pricePromo)
+moneyShare: Number(formData.moneyShare)
+index: Number(formData.index)
+shopId: Number(formData.shopId)
+```
+
+### ID Handling
+```js
+// Create: Date.now() string
+// Parse: Nếu là số → Number, nếu không → giữ string
+const serviceId = id || Date.now().toString();
+const finalId = isNaN(Number(serviceId)) ? serviceId : Number(serviceId);
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Cập nhật dịch vụ" / "Thêm dịch vụ mới"
+  │   │   └─ ID Subtitle (nếu edit)
+  │   └─ Save Button (Loading indicator nếu đang save)
+  │
+  └─ KeyboardAvoidingView
+      └─ ScrollView (Form Container)
+          ├─ Tên dịch vụ (TextInput)
+          ├─ Link ảnh (Image URL) (TextInput)
+          ├─ Row 1:
+          │   ├─ Giá gốc (K)
+          │   └─ Giá bán (K)
+          ├─ Row 2:
+          │   ├─ % Cho Admin (moneyShare)
+          │   └─ Số thứ tự hiển thị (index)
+          ├─ Ghi chú dịch vụ (TextInput multiline)
+          └─ Kích hoạt dịch vụ (Switch)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### MoneyShare Field
+1. **Ý nghĩa:**
+   - % tiền admin nhận từ dịch vụ
+   - VD: moneyShare=20 → Admin nhận 20% giá dịch vụ
+   - Shop nhận 80% còn lại
+
+2. **Default Value:** "20" (20%)
+
+3. **Calculation Example:**
+   ```js
+   pricePromo = 50k
+   moneyShare = 20%
+   
+   adminMoney = 50 * 0.20 = 10k
+   shopMoney = 50 * 0.80 = 40k
+   ```
+
+### Shop ID Field
+4. **Default:** "209" (ID shop dịch vụ chung)
+5. **Purpose:** Phân biệt dịch vụ thuộc shop nào
+6. **Note:** Không validate shopId tồn tại
+
+### Image Handling
+7. **No Upload:** User nhập trực tiếp URL
+8. **Placeholder:** `"https://i.imgur.com/..."`
+9. **Validation:** Required field
+
+### Status Switch
+10. **Values:**
+    - `enable`: Dịch vụ kích hoạt
+    - `disable`: Dịch vụ tạm khóa
+11. **Switch Colors:**
+    - false: #D1D1D1 (gray)
+    - true: #27AE60 (green)
+
+### Log Field
+12. **Reset on Save:** `log: []`
+13. **Purpose:** Tracking changes history (not implemented yet)
+
+### Loading State
+14. **Button Disabled:** `disabled={loading}`
+15. **Show Spinner:** `<ActivityIndicator />` thay text "Lưu"
+
+## 🚀 USER JOURNEY
+
+### Admin - Thêm dịch vụ mới
+1. Navigate to `/admin/edit-service` (không có id param)
+2. Nhập tên dịch vụ: "Thay lõi lọc nước"
+3. Nhập link ảnh: "https://i.imgur.com/..."
+4. Nhập giá:
+   - Giá gốc: 50k
+   - Giá bán: 40k (giảm giá)
+5. Cấu hình % cho Admin: 20%
+6. Chọn thứ tự hiển thị: index=1
+7. Nhập ghi chú (optional)
+8. Bật/tắt trạng thái (Switch)
+9. Nhấn "Lưu" → Tạo document mới trong Firestore
+10. Alert "Thành công" → Back to services list
+
+### Admin - Sửa dịch vụ có sẵn
+1. Navigate to `/admin/edit-service?id=123`
+2. Load data từ `services.find(s => s.id === id)`
+3. Populate form với data hiện tại
+4. Sửa các trường cần thiết (giá, %, ghi chú, v.v.)
+5. Nhấn "Lưu" → Update document trong Firestore
+6. Alert "Thành công" → Back to services list
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không (modal-style screen)
+
+**Navigates FROM:**
+- Admin Services page → Nhấn "Sửa" trên service card
+- Admin Services page → Nhấn "Thêm dịch vụ mới"
+
+**Back Navigation:**
+- Back button (header left)
+- After save success → `router.back()`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Operations
+1. **Collection:** `services`
+2. **Document ID:**
+   - Edit: Use existing `id`
+   - Create: `Date.now().toString()` (timestamp string)
+3. **Update vs SetDoc:**
+   - Edit: `updateDoc(serviceRef, finalData)`
+   - Create: `setDoc(serviceRef, finalData, { merge: true })`
+4. **Merge Option:** `{ merge: true }` để không overwrite toàn bộ doc
+
+### Service Structure
+```js
+{
+  id: number | string,
+  name: string,
+  priceNormal: number,   // Giá gốc (nghìn đồng)
+  pricePromo: number,    // Giá bán (nghìn đồng)
+  moneyShare: number,    // % cho Admin (0-100)
+  image: string,         // URL ảnh (single, không phải array)
+  status: 'enable' | 'disable',
+  index: number,         // Thứ tự hiển thị
+  shopId: number,        // Default 209
+  note: string,
+  log: []                // Empty array (future use)
+}
+```
+
+### So Sánh với edit-food.tsx
+| Feature | edit-food | edit-service |
+|---------|-----------|--------------|
+| **Image Upload** | ✅ ImgBB integration | ❌ Manual URL input |
+| **Options** | ✅ Complex options array | ❌ No options |
+| **Time Config** | ✅ timeStart/timeEnd | ❌ No time restriction |
+| **Type** | ✅ đồ ăn/đồ uống | ❌ No type field |
+| **MoneyShare** | ❌ No moneyShare | ✅ % cho Admin |
+| **Complexity** | High (694 lines) | Low (213 lines) |
+
+### Validation Rules
+5. **Required Fields:**
+   - ✅ `name`: Không rỗng
+   - ✅ `pricePromo`: Không rỗng, phải là số
+   - ✅ `image`: Không rỗng (URL)
+
+6. **Optional Fields:**
+   - `priceNormal`: Có thể rỗng (convert về 0)
+   - `note`: Có thể rỗng
+   - `moneyShare`: Default "20" nếu rỗng
+
+7. **No Validation:**
+   - Image URL format (không check URL hợp lệ)
+   - ShopId existence (không check shop tồn tại)
+   - Price range (có thể âm? → Nên validate)
+
+### KeyboardAvoidingView
+8. **Behavior:**
+   - iOS: `"padding"`
+   - Android: `"height"` (khác với edit-food dùng null)
+
+### Form Layout
+9. **Input Groups:**
+   - Full width: name, image, note
+   - Row (2 columns): priceNormal+pricePromo, moneyShare+index
+
+10. **Spacing:**
+    - marginBottom: 20 per inputGroup
+    - marginRight: 10 for left column in row
+
+11. **Input Style:**
+    - backgroundColor: #fff
+    - borderWidth: 1
+    - borderColor: #DDD
+    - borderRadius: 12
+    - padding: 12
+
+### Status Container
+12. **Layout:**
+    - flexDirection: row
+    - justifyContent: space-between
+    - backgroundColor: #F9F9F9
+    - padding: 15
+    - borderRadius: 12
+
+### Save Button State
+13. **Normal:** Text "Lưu", color primary, fontWeight bold
+14. **Loading:** ActivityIndicator size="small" color primary
+15. **Disabled:** opacity 0.5 (trong styles.saveBtn)
+
+### Error Handling
+16. **Network Error:**
+    - Alert "Lỗi", "Không thể lưu dữ liệu: [error.message]"
+
+17. **Validation Error:**
+    - Alert "Lỗi", "Vui lòng nhập Tên, Giá bán và Link ảnh dịch vụ"
+
+### State Management
+18. **Local State Only:** Không update Zustand store
+19. **Firestore Auto-update:** Store listener tự động fetch data mới
+20. **No Optimistic Update:** Chờ save xong mới back
+
+## 🎯 USE CASES
+
+### 1. Thay lõi lọc nước
+```js
+{
+  name: "Thay lõi lọc nước",
+  priceNormal: 50,
+  pricePromo: 40,
+  moneyShare: 20,  // Admin nhận 8k (20% of 40k)
+  image: "https://i.imgur.com/water-filter.jpg",
+  status: "enable",
+  index: 1,
+  shopId: 209,
+  note: "Bao gồm vật tư và công thay"
+}
+```
+
+### 2. Sửa máy giặt
+```js
+{
+  name: "Sửa máy giặt",
+  priceNormal: 100,
+  pricePromo: 80,
+  moneyShare: 25,  // Admin nhận 20k (25% of 80k)
+  image: "https://i.imgur.com/washing-machine.jpg",
+  status: "enable",
+  index: 2,
+  shopId: 209,
+  note: "Giá chỉ áp dụng cho sửa chữa cơ bản"
+}
+```
+
+### 3. Vệ sinh máy lạnh
+```js
+{
+  name: "Vệ sinh máy lạnh",
+  priceNormal: 150,
+  pricePromo: 150, // Không giảm giá
+  moneyShare: 30,  // Admin nhận 45k (30% of 150k)
+  image: "https://i.imgur.com/air-conditioner.jpg",
+  status: "enable",
+  index: 3,
+  shopId: 209,
+  note: "Dịch vụ vệ sinh sâu, tháo lắp máy lạnh"
+}
+```
+
+## 🔍 MONEYSHARE CALCULATION
+
+### Formula
+```js
+const adminMoney = pricePromo * (moneyShare / 100);
+const shopMoney = pricePromo - adminMoney;
+```
+
+### Examples
+| pricePromo | moneyShare | adminMoney | shopMoney |
+|------------|------------|------------|-----------|
+| 40k | 20% | 8k | 32k |
+| 80k | 25% | 20k | 60k |
+| 150k | 30% | 45k | 105k |
+| 50k | 0% | 0k | 50k |
+| 100k | 100% | 100k | 0k |
+
+### Edge Cases
+- **moneyShare = 0%:** Shop nhận toàn bộ (Admin không nhận)
+- **moneyShare = 100%:** Admin nhận toàn bộ (Shop không nhận)
+- **moneyShare > 100%:** Không validate (có thể nhập, nhưng không hợp lý)
+- **moneyShare < 0%:** Không validate (có thể nhập, nhưng không hợp lý)
+
+## 🚨 MISSING FEATURES & IMPROVEMENTS
+
+### Current Limitations
+1. **No Image Upload:**
+   - User phải tự upload ảnh lên Imgur/ImgBB trước
+   - Copy URL rồi paste vào form
+   - → Nên thêm upload button như edit-food
+
+2. **No URL Validation:**
+   - Không check image URL hợp lệ
+   - Không check ảnh có load được không
+   - → Nên thêm Image preview
+
+3. **No Price Validation:**
+   - Có thể nhập giá âm
+   - Có thể nhập pricePromo > priceNormal
+   - → Nên validate pricePromo <= priceNormal
+
+4. **No MoneyShare Validation:**
+   - Có thể nhập > 100% hoặc < 0%
+   - → Nên validate 0 <= moneyShare <= 100
+
+5. **No ShopId Validation:**
+   - Không check shop tồn tại
+   - → Nên dropdown select từ danh sách shops
+
+### Suggested Improvements
+6. **Image Upload:**
+   ```js
+   // Thêm như edit-food
+   <TouchableOpacity onPress={handlePickAndUpload}>
+     <Ionicons name="cloud-upload-outline" />
+   </TouchableOpacity>
+   ```
+
+7. **Image Preview:**
+   ```js
+   {formData.image && (
+     <Image source={{ uri: formData.image }} style={styles.preview} />
+   )}
+   ```
+
+8. **Validation:**
+   ```js
+   if (Number(formData.pricePromo) > Number(formData.priceNormal)) {
+     Alert.alert("Lỗi", "Giá bán không thể lớn hơn giá gốc");
+     return;
+   }
+   
+   const share = Number(formData.moneyShare);
+   if (share < 0 || share > 100) {
+     Alert.alert("Lỗi", "% cho Admin phải từ 0-100");
+     return;
+   }
+   ```
+
+9. **Shop Dropdown:**
+   ```js
+   const shops = users.filter(u => u.role === 'chủ shop');
+   <Picker
+     selectedValue={formData.shopId}
+     onValueChange={(v) => setFormData({...formData, shopId: v})}
+   >
+     {shops.map(s => <Picker.Item key={s.id} label={s.shopName} value={s.id} />)}
+   </Picker>
+   ```
+
+10. **Loading Overlay:**
+    - Hiện loading full screen khi đang save
+    - Disable toàn bộ form
+
+## 📝 DEVELOPER NOTES
+
+### Code Quality
+- ✅ TypeScript: `@ts-nocheck` (cần enable type checking)
+- ✅ Clean structure: Easy to understand
+- ✅ KeyboardAvoidingView: Handle keyboard properly
+- ⚠️ No validation: Need more validation logic
+- ⚠️ No image upload: User experience not optimal
+
+### Maintainability
+- 📦 213 lines (compact, easy to maintain)
+- 🎨 Consistent styling with GlobalStyles
+- 🔄 Reusable pattern (similar to edit-promo, edit-user)
+
+### Performance
+- ⚡ Fast: No heavy operations
+- ⚡ No unnecessary re-renders
+- ⚡ Lightweight form
+
+### Security
+- ⚠️ No input sanitization
+- ⚠️ No XSS protection for note field
+- ⚠️ No SQL injection (Firestore safe)

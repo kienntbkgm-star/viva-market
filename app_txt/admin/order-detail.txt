@@ -1,0 +1,628 @@
+# TÓM TẮT LOGIC TRANG ADMIN/ORDER-DETAIL.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình chi tiết đơn hàng food (admin view):
+- Xem thông tin đầy đủ của đơn hàng
+- Hiển thị khách hàng, shipper, danh sách món
+- Xem nhật ký vận hành (logs)
+- Admin có thể reset đơn về pending
+- Admin có thể hủy đơn
+- Không có chức năng giao hàng (shipper làm)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `foodOrders`: Danh sách đơn hàng food
+- `users`: Danh sách users (để lấy shipper info)
+- `currentUser`: User đang login (check role admin)
+
+**Route Params:**
+- `orderId`: ID của đơn hàng cần xem
+
+**Computed:**
+```js
+const order = useMemo(() => 
+  foodOrders.find(o => 
+    String(o.orderId) === String(orderId) || 
+    String(o.id) === String(orderId)
+  )
+, [orderId, foodOrders]);
+
+const shipperInfo = order?.shipperId 
+  ? users.find(u => String(u.id) === String(order.shipperId)) 
+  : null;
+
+const isAdmin = currentUser?.role === 'admin';
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load Order
+```js
+// useMemo để tránh re-compute mỗi lần render
+const order = useMemo(() => {
+  return foodOrders.find(o => 
+    String(o.orderId) === String(orderId) || 
+    String(o.id) === String(orderId)
+  );
+}, [orderId, foodOrders]);
+
+// Nếu không tìm thấy → Show error
+if (!order) {
+  return <Text>Không tìm thấy đơn hàng</Text>;
+}
+```
+
+### 2. Update Status (Admin Only)
+```js
+const updateStatus = async (newStatus, note, isReset = false) => {
+  try {
+    const orderRef = doc(db, 'foodOrders', order.id || order.orderId);
+    
+    // Tạo log entry
+    const newLog = {
+      content: note,
+      status: newStatus,
+      time: new Date().toISOString()
+    };
+    
+    // Prepare update data
+    const updateData = {
+      status: newStatus,
+      logs: arrayUnion(newLog)
+    };
+    
+    // Nếu reset → Gỡ shipper
+    if (isReset) {
+      updateData.shipperId = null;
+    }
+    
+    await updateDoc(orderRef, updateData);
+    
+    // Alert success
+    if (Platform.OS === 'web') {
+      window.alert("Thành công: Đã cập nhật đơn hàng");
+    } else {
+      Alert.alert("Thành công", "Đã cập nhật đơn hàng");
+    }
+  } catch (error) {
+    Alert.alert("Lỗi", "Không thể thực hiện thao tác");
+  }
+};
+```
+
+### 3. Reset Order
+```js
+// Reset về pending + gỡ shipper
+updateStatus('pending', 'Admin đã reset đơn hàng', true);
+```
+
+### 4. Cancel Order
+```js
+// Hủy đơn
+updateStatus('cancelled', 'Admin đã hủy đơn hàng');
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### Platform-Specific Alert
+```js
+const showAlert = (title, message, onPressOk) => {
+  if (Platform.OS === 'web') {
+    const confirm = window.confirm(`${title}: ${message}`);
+    if (confirm) onPressOk();
+  } else {
+    Alert.alert(title, message, [
+      { text: "Hủy", style: "cancel" },
+      { text: "Đồng ý", onPress: onPressOk }
+    ]);
+  }
+};
+```
+
+### Status Label Mapping
+```js
+const getStatusLabel = (status) => {
+  switch (status) {
+    case 'pending': return 'CHỜ NHẬN';
+    case 'processing': return 'ĐANG GIAO';
+    case 'completed': return 'HOÀN THÀNH';
+    case 'cancelled': return 'ĐÃ HỦY';
+    default: return status?.toUpperCase();
+  }
+};
+```
+
+### Price Display
+```js
+// All prices stored in "k" (thousands)
+// Display: multiply by 1000 and format
+(order.totalFood * 1000).toLocaleString() + 'đ'
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Chi tiết đơn hàng"
+  │   └─ Spacer
+  │
+  └─ ScrollView
+      ├─ Card: THÔNG TIN CHUNG & TRẠNG THÁI
+      │   ├─ Order ID + Status Label
+      │   └─ Created Time
+      │
+      ├─ Card: THÔNG TIN KHÁCH HÀNG
+      │   ├─ Icon + Name
+      │   ├─ Icon + Phone
+      │   └─ Icon + Address
+      │
+      ├─ Card: THÔNG TIN SHIPPER (nếu có shipperId)
+      │   ├─ Icon + Shipper Name
+      │   └─ Icon + Shipper Phone
+      │   (Green border left 4px)
+      │
+      ├─ Card: DANH SÁCH MÓN
+      │   └─ Food Items (map)
+      │       ├─ Image (45x45)
+      │       ├─ Name + Quantity
+      │       └─ Price
+      │
+      ├─ Card: CHI TIẾT THANH TOÁN
+      │   ├─ Tiền món (totalFood)
+      │   ├─ Phí vận chuyển gốc (baseShip)
+      │   ├─ Phí thêm shop (extraStepFee) (nếu > 0)
+      │   ├─ Khuyến mãi (discount) (nếu > 0, màu đỏ)
+      │   ├─ Divider
+      │   └─ TỔNG CỘNG (finalTotal, bold, màu primary)
+      │
+      ├─ Card: NHẬT KÝ VẬN HÀNH
+      │   └─ Log Items (map)
+      │       ├─ Dot (primary color)
+      │       ├─ Content
+      │       └─ Time
+      │
+      └─ Admin Actions (nếu isAdmin && status !== 'completed')
+          ├─ RESET ĐƠN button (nếu status !== 'pending' || có shipperId)
+          └─ HỦY ĐƠN button (nếu status !== 'cancelled')
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Order ID Handling
+1. **Flexible Matching:**
+   - Find by `orderId` OR `id`
+   - String comparison để tránh type mismatch
+   - useMemo để optimize
+
+### Shipper Display
+2. **Conditional Rendering:**
+   - Chỉ show card nếu `order.shipperId` tồn tại
+   - Green border left để highlight
+   - Fallback: Nếu không tìm thấy shipper info → Show ID
+
+3. **Shipper Info:**
+   ```js
+   shipperInfo ? (
+     <>
+       <Text>{shipperInfo.name}</Text>
+       <Text>{shipperInfo.phone}</Text>
+     </>
+   ) : (
+     <Text>ID Shipper: #{order.shipperId}</Text>
+   )
+   ```
+
+### Status Flow
+4. **Status States:**
+   - `pending`: Chờ shipper nhận
+   - `processing`: Shipper đã nhận, đang giao
+   - `completed`: Giao thành công
+   - `cancelled`: Đã hủy
+
+5. **Status Colors:** (not in styles, but suggested)
+   - pending: Orange
+   - processing: Blue
+   - completed: Green
+   - cancelled: Red
+
+### Price Breakdown
+6. **TotalFood:**
+   - Tổng tiền món ăn
+   - Không bao gồm ship
+
+7. **BaseShip:**
+   - Phí ship cơ bản (1 shop)
+
+8. **ExtraStepFee:**
+   - Phí thêm khi đặt nhiều shop
+   - Chỉ hiển thị nếu > 0
+   - Formula: `(shopIds.length - 1) * feePerShop`
+
+9. **Discount:**
+   - Giá trị giảm từ promo code
+   - Hiển thị màu đỏ
+   - Dấu "-" phía trước
+
+10. **FinalTotal:**
+    - = totalFood + baseShip + extraStepFee - discount
+    - Bold, màu primary, fontSize 20
+
+### Logs Display
+11. **Log Structure:**
+    ```js
+    {
+      content: string,  // "Shipper đã nhận đơn"
+      status: string,   // "processing"
+      time: string      // ISO timestamp
+    }
+    ```
+
+12. **Log UI:**
+    - Dot indicator (8x8, primary color)
+    - Content (fontSize 13)
+    - Time (fontSize 11, gray, localized)
+
+### Admin Actions
+13. **Visibility:**
+    - Chỉ show nếu `isAdmin = true`
+    - Ẩn nếu `status = 'completed'`
+
+14. **Reset Button:**
+    - Show nếu:
+      - `status !== 'pending'` OR
+      - `order.shipperId` tồn tại
+    - Action:
+      - Set status → 'pending'
+      - Set shipperId → null
+      - Add log: "Admin đã reset đơn hàng"
+
+15. **Cancel Button:**
+    - Show nếu `status !== 'cancelled'`
+    - Action:
+      - Set status → 'cancelled'
+      - Add log: "Admin đã hủy đơn hàng"
+
+### Platform Differences
+16. **Web Alert:**
+    - Dùng `window.confirm()`
+    - Return true/false
+
+17. **Mobile Alert:**
+    - Dùng `Alert.alert()`
+    - 2 buttons: Hủy, Đồng ý
+
+## 🚀 USER JOURNEY
+
+### Admin - Xem chi tiết đơn
+1. Navigate to `/admin/order-detail?orderId=123`
+2. Load order data từ store
+3. Xem thông tin:
+   - Khách hàng: Tên, SĐT, Địa chỉ
+   - Shipper: Tên, SĐT (nếu có)
+   - Danh sách món
+   - Chi tiết thanh toán
+   - Nhật ký vận hành
+4. Scroll để xem toàn bộ
+
+### Admin - Reset đơn về pending
+1. Đơn đang processing hoặc completed
+2. Shipper chưa giao được → Cần assign shipper khác
+3. Nhấn "RESET ĐƠN"
+4. Confirm → updateStatus('pending', ..., true)
+5. Order status → 'pending'
+6. ShipperId → null
+7. Log mới: "Admin đã reset đơn hàng"
+
+### Admin - Hủy đơn
+1. Đơn có vấn đề (customer request, không thể giao, v.v.)
+2. Nhấn "HỦY ĐƠN"
+3. Confirm → updateStatus('cancelled', ...)
+4. Order status → 'cancelled'
+5. Log mới: "Admin đã hủy đơn hàng"
+
+### Shipper - Xem đơn (not this file)
+- Shipper có trang riêng để xem orders
+- Shipper có thể accept order (pending → processing)
+- Shipper có thể complete order (processing → completed)
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không
+
+**Navigates FROM:**
+- Admin Orders page → Nhấn vào order card
+- Admin search → Nhấn vào result
+
+**Back Navigation:**
+- Back button (header left) → `router.back()`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Operations
+1. **Collection:** `foodOrders`
+2. **Document ID:** `order.id` hoặc `order.orderId`
+3. **Update:** `updateDoc(orderRef, {...})`
+4. **ArrayUnion:** Add log without overwriting existing logs
+
+### Order Structure
+```js
+{
+  id: string,
+  orderId: string,         // Same as id (duplicate)
+  userId: number,
+  userName: string,
+  userPhone: string,
+  address: string,
+  shipperId: number | null,
+  status: 'pending' | 'processing' | 'completed' | 'cancelled',
+  items: Array<{
+    img: string,
+    name: string,
+    quantity: number,
+    pricePromo: number
+  }>,
+  totalFood: number,       // Nghìn đồng
+  baseShip: number,
+  extraStepFee: number,
+  discount: number,
+  finalTotal: number,
+  shopIds: number[],       // Array shop IDs trong order
+  logs: Array<{
+    content: string,
+    status: string,
+    time: string
+  }>,
+  createdAt: string        // ISO timestamp
+}
+```
+
+### Status Management
+5. **Status Flow:**
+   ```
+   pending → processing → completed
+              ↓
+           cancelled
+   ```
+
+6. **Reset Flow:**
+   ```
+   processing/completed → pending (+ remove shipperId)
+   ```
+
+7. **Cannot Reset From:**
+   - pending (without shipperId) → Already in initial state
+
+### Price Calculation
+8. **All Prices in "k" (thousands):**
+   - totalFood = 50 → 50,000đ
+   - Display: `(value * 1000).toLocaleString() + 'đ'`
+
+9. **Extra Step Fee:**
+   ```js
+   // Example: 2 shops
+   shopIds = [1, 5]
+   extraStepFee = (2 - 1) * feePerShop
+   ```
+
+10. **Discount Application:**
+    ```js
+    // Promo code: 10%
+    discount = (totalFood + baseShip + extraStepFee) * 0.1
+    finalTotal = totalFood + baseShip + extraStepFee - discount
+    ```
+
+### Logs Array
+11. **ArrayUnion:**
+    - Append new log without overwriting
+    - Firestore operation: `arrayUnion(newLog)`
+
+12. **Log Order:**
+    - Oldest to newest (chronological)
+    - Display: Map through logs array
+
+### UseMemo Optimization
+13. **Order Lookup:**
+    - useMemo để tránh re-search mỗi render
+    - Dependencies: [orderId, foodOrders]
+
+14. **Shipper Lookup:**
+    - useMemo hoặc direct find (simple)
+
+### Role Check
+15. **Admin Only Actions:**
+    - Check `currentUser.role === 'admin'`
+    - Hide buttons nếu không phải admin
+
+16. **Shipper Cannot:**
+    - Shipper không vào trang này
+    - Shipper có trang riêng (shipper order detail)
+
+### Error Handling
+17. **Order Not Found:**
+    - Show error message
+    - Header + centered text
+
+18. **Update Failed:**
+    - Alert "Lỗi", "Không thể thực hiện thao tác"
+    - Log error (nên thêm)
+
+### ScrollView
+19. **contentContainerStyle:** `{ padding: 15 }`
+20. **Scroll:** Tất cả content scrollable
+
+## 🔍 LOG EXAMPLES
+
+### Log Timeline
+```js
+[
+  {
+    content: "Đơn hàng đã được tạo",
+    status: "pending",
+    time: "2026-01-27T10:00:00.000Z"
+  },
+  {
+    content: "Shipper #5 đã nhận đơn",
+    status: "processing",
+    time: "2026-01-27T10:15:00.000Z"
+  },
+  {
+    content: "Shipper đang giao hàng",
+    status: "processing",
+    time: "2026-01-27T10:30:00.000Z"
+  },
+  {
+    content: "Admin đã reset đơn hàng",
+    status: "pending",
+    time: "2026-01-27T10:45:00.000Z"
+  },
+  {
+    content: "Shipper #10 đã nhận đơn",
+    status: "processing",
+    time: "2026-01-27T11:00:00.000Z"
+  },
+  {
+    content: "Giao hàng thành công",
+    status: "completed",
+    time: "2026-01-27T11:30:00.000Z"
+  }
+]
+```
+
+## 🎯 USE CASES
+
+### 1. Shipper chưa giao được
+- Status: processing
+- ShipperId: 5
+- Problem: Shipper bận, không thể giao
+- Action: Admin reset → pending
+- Result: Order quay về pending, shipperId = null, shipper khác có thể nhận
+
+### 2. Customer hủy đơn
+- Status: pending hoặc processing
+- Customer gọi yêu cầu hủy
+- Action: Admin cancel
+- Result: Order status = cancelled, không thể giao nữa
+
+### 3. Xem lịch sử đơn
+- Admin cần kiểm tra logs
+- Xem timeline: Tạo → Shipper nhận → Giao thành công
+- Verify thời gian giao hàng
+
+### 4. Multi-shop order
+- Items từ 2 shops: shopIds = [1, 5]
+- BaseShip: 15k
+- ExtraStepFee: 5k (1 shop thêm)
+- Total ship: 20k
+
+### 5. Promo order
+- Promo code: FREESHIP02 (giảm 10%)
+- TotalFood + Ship: 100k
+- Discount: 10k
+- FinalTotal: 90k
+
+## 🚨 EDGE CASES
+
+1. **Order Not Found:**
+   - orderId không tồn tại trong foodOrders
+   - Show error view
+
+2. **ShipperId Without Info:**
+   - order.shipperId = 5
+   - users không có user với id=5 (user bị xóa)
+   - Fallback: "ID Shipper: #5"
+
+3. **Empty Logs:**
+   - Order mới tạo, logs = []
+   - Nothing to display
+
+4. **Completed Order:**
+   - Admin buttons hidden
+   - Cannot reset/cancel completed orders
+
+5. **Web vs Mobile:**
+   - Alert khác nhau
+   - window.confirm vs Alert.alert
+
+6. **Multiple Shops:**
+   - extraStepFee calculation
+   - Show "+ X shop" text
+
+7. **No Discount:**
+   - discount = 0
+   - Don't show discount row
+
+8. **No ExtraStepFee:**
+   - Single shop order
+   - Don't show extraStepFee row
+
+## 📝 SUGGESTED IMPROVEMENTS
+
+### 1. Status Color Badge
+```js
+const statusColors = {
+  pending: '#FFA726',
+  processing: '#42A5F5',
+  completed: '#66BB6A',
+  cancelled: '#EF5350'
+};
+
+<View style={[styles.statusBadge, { backgroundColor: statusColors[order.status] }]}>
+  <Text style={styles.statusText}>{getStatusLabel(order.status)}</Text>
+</View>
+```
+
+### 2. Copy Order ID
+```js
+<TouchableOpacity onPress={() => Clipboard.setString(order.orderId)}>
+  <Text style={styles.orderIdText}>#{order.orderId}</Text>
+</TouchableOpacity>
+```
+
+### 3. Call Customer/Shipper
+```js
+<TouchableOpacity onPress={() => Linking.openURL(`tel:${order.userPhone}`)}>
+  <Ionicons name="call" size={18} color="#4CAF50" />
+</TouchableOpacity>
+```
+
+### 4. Map Location
+```js
+<TouchableOpacity onPress={() => openMap(order.address)}>
+  <Ionicons name="navigate" size={18} color="#2196F3" />
+</TouchableOpacity>
+```
+
+### 5. Refresh Button
+```js
+<TouchableOpacity onPress={() => refetchOrder()}>
+  <Ionicons name="refresh" size={24} />
+</TouchableOpacity>
+```
+
+### 6. Assign Shipper (Admin)
+```js
+<TouchableOpacity onPress={() => showShipperPicker()}>
+  <Text>Chọn Shipper</Text>
+</TouchableOpacity>
+```
+
+### 7. Order Timeline Visual
+```js
+// Progress bar: pending → processing → completed
+<View style={styles.timeline}>
+  <View style={[styles.step, order.status !== 'pending' && styles.stepComplete]}>
+    <Text>Chờ nhận</Text>
+  </View>
+  <View style={styles.line} />
+  <View style={[styles.step, order.status === 'completed' && styles.stepComplete]}>
+    <Text>Đang giao</Text>
+  </View>
+  <View style={styles.line} />
+  <View style={[styles.step, order.status === 'completed' && styles.stepComplete]}>
+    <Text>Hoàn thành</Text>
+  </View>
+</View>
+```

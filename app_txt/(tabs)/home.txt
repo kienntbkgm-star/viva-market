@@ -1,0 +1,148 @@
+# TÓM TẮT LOGIC TRANG HOME.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang chủ hiển thị danh sách món ăn/đồ uống với khả năng:
+- Lọc theo loại (tất cả, đồ ăn, đồ uống)
+- Lọc theo cửa hàng (all, hoặc theo shopId cụ thể)
+- Tìm kiếm theo tên món (bỏ dấu tiếng Việt)
+- Hiển thị trạng thái "HẾT GIỜ BÁN" hoặc "HẾT MÓN"
+- Giỏ hàng nổi (floating cart button)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `foods`: danh sách món ăn từ Firestore
+- `users`: danh sách người dùng (để lấy thông tin shop)
+- `system`: thông tin hệ thống
+- `cart`: giỏ hàng hiện tại
+
+**Local State:**
+- `currentHour`: giờ hiện tại (để check hết giờ bán)
+- `searchQuery`: từ khóa tìm kiếm
+- `selectedType`: tab đang chọn (Tất cả/đồ ăn/đồ uống)
+- `selectedShop`: shop đang chọn (all hoặc shopId)
+- `showShopFilter`: hiện/ẩn dropdown chọn shop
+
+## 🔄 LUỒNG THỰC THI
+
+1. **Load dữ liệu:** Lấy `foods`, `users`, `cart` từ store
+2. **Tính toán các shop có sẵn:**
+   - Lấy danh sách shopId duy nhất từ foods
+   - Join với users để lấy shopName, imgShopSquare
+   - Sắp xếp theo số món giảm dần
+   - Thêm option "Tất cả cửa hàng" vào đầu
+3. **Filter dữ liệu (memoized):**
+   - Filter theo type: đồ ăn, đồ uống, hoặc tất cả
+   - Filter theo searchQuery (bỏ dấu)
+   - Filter theo selectedShop
+   - Tính toán `isOutOfTime` dựa vào `timeStart`, `timeEnd`, `currentHour`
+4. **Render danh sách:** FlatList với 2 cột
+5. **Nhấn món:** Navigate đến `/ItemDetail` với params `item`
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `removeVietnameseTones(str)`
+Bỏ dấu tiếng Việt để so sánh tìm kiếm:
+```js
+str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase().trim()
+```
+
+### `formatCurrency(val)`
+Chuyển đổi số sang định dạng VNĐ:
+```js
+(val * 1000).toLocaleString('vi-VN')
+```
+
+### Logic kiểm tra HẾT GIỜ BÁN
+```js
+const start = Number(item.timeStart) || 0;
+const end = Number(item.timeEnd) || 24;
+let isExpired = false;
+
+if (start < end) {
+  // Khung giờ bình thường: 7h-22h
+  if (currentHour < start || currentHour >= end) isExpired = true;
+} else if (start > end) {
+  // Khung giờ qua đêm: 22h-3h
+  if (currentHour >= end && currentHour < start) isExpired = true;
+}
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ View (Top Filter Row)
+  │   ├─ Shop Button (mở dropdown)
+  │   ├─ Divider dọc
+  │   └─ ScrollView ngang (Tabs: Tất cả, đồ ăn, đồ uống)
+  │
+  ├─ Shop Dropdown (khi showShopFilter = true)
+  │   └─ ScrollView ngang (danh sách shop)
+  │
+  ├─ FlatList (2 cột)
+  │   ├─ Header: "X sản phẩm tại Shop Y"
+  │   └─ renderFoodItem: Card món ăn
+  │       ├─ Image (có badge shop nếu all, overlay HẾT MÓN/HẾT GIỜ)
+  │       ├─ Name
+  │       └─ Price (giá KM + giá gốc gạch ngang)
+  │
+  └─ Floating Bottom Search Bar
+      ├─ TextInput tìm kiếm
+      └─ Cart Button (badge số lượng)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Filter kết hợp 3 chiều:** Type + Search + Shop
+2. **Shop Badge:** Chỉ hiện khi `selectedShop === 'all'` để biết món thuộc shop nào
+3. **Overlay HẾT MÓN/HẾT GIỜ:**
+   - `effectiveStatus === 'disable'` → "HẾT MÓN"
+   - `isOutOfTime === true` → "HẾT GIỜ BÁN"
+   - Món bị disable không thể nhấn vào
+4. **Compact Filter UI:** Shop button + Tabs trên cùng một hàng ngang
+5. **Floating Search Bar:** Thanh tìm kiếm dưới cùng với nút giỏ hàng
+6. **Real-time giờ:** Dùng `useFocusEffect` để update `currentHour` mỗi lần vào trang
+7. **Optimization:** Dùng `useMemo` cho availableShops, filteredData, selectedShopInfo để tránh tính toán lại không cần thiết
+
+## 🚀 USER JOURNEY
+
+**Khách vãng lai / User thường:**
+1. Mở app → Home screen (tab mặc định)
+2. Xem danh sách món ăn
+3. Chọn filter: Tabs (đồ ăn/đồ uống), Shop, Search
+4. Nhấn món → ItemDetail
+5. Nhấn giỏ hàng → Cart
+
+**Shop Owner:**
+(Tương tự user thường, xem được món của tất cả shop)
+
+**Admin:**
+(Tương tự user thường, có thể vào admin tab riêng)
+
+**Shipper:**
+(Tương tự user thường, có shipper tab riêng)
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/ItemDetail` (nhấn vào card món)
+- `/cart` (nhấn nút giỏ hàng)
+
+**Navigates FROM:**
+- N/A (đây là tab mặc định khi mở app)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Type đồ uống có 2 giá trị:** `type === 'đồ uống'` hoặc `type === '2'`
+2. **Filter tabs hardcode:** `['Tất cả', 'đồ ăn', 'đồ uống']`
+3. **useFocusEffect:** Cập nhật `currentHour` mỗi lần focus vào tab home
+4. **totalItemsInCart:** Tính tổng `quantity` của tất cả item trong cart
+5. **Card opacity 0.5:** Khi món disable (hết giờ hoặc hết món)
+6. **Alert khác nhau Web vs Native:**
+   - Web: `window.alert(msg)`
+   - Native: `Alert.alert("Thông báo", msg)`
+7. **ShopInfo type:** `{id, name, img?, productCount?}`
+8. **FoodItem type:** `{id, name, type, shopId?, img?, pricePromo, priceNormal, effectiveStatus?, timeStart?, timeEnd?}`
+9. **Vertical Divider:** Ngăn cách giữa shop button và tabs
+10. **Border color của card:** Không có màu đặc biệt, dùng elevation/shadow

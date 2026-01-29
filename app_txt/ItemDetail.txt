@@ -1,0 +1,290 @@
+# TÓM TẮT LOGIC TRANG ITEMDETAIL.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang **chi tiết món ăn** - hiển thị thông tin món, cho phép chọn options (size, topping), thêm vào giỏ hàng
+
+## 📊 STATE & DATA
+
+**Props từ params:**
+- `item`: JSON string của món ăn (parse thành object)
+
+**State local:**
+- `quantity`: Số lượng (mặc định 1)
+- `note`: Ghi chú cho món
+- `selectedOptions`: Mảng index các option đã chọn
+
+**Data từ Store:**
+- `users`: Danh sách user (để tìm shop owner)
+- `addToCart()`: Function thêm vào giỏ hàng
+
+## 🎨 LOGIC XỬ LÝ OPTIONS
+
+### **1. Phân loại Options:**
+```javascript
+activeOptions = item.option.filter(opt => 
+  opt.status === true || 'true' || 'enable'
+)
+
+sizeOptions = options có tên chứa 'size' hoặc s/m/l/xl/xxl
+otherOptions = các options còn lại (topping, extra...)
+```
+
+### **2. Logic Chọn Size:**
+```
+- Chỉ được chọn 1 size duy nhất
+- Nếu chọn size mới → Bỏ size cũ tự động
+- Size có thứ tự: s < m < l < xl < xxl
+- Khi thêm vào giỏ → Chỉ lấy size LỚN NHẤT (nếu chọn nhiều)
+```
+
+### **3. Logic Chọn Other Options:**
+```
+- Được chọn nhiều (checkbox)
+- Không giới hạn số lượng
+- Có thể bỏ chọn bất kỳ
+```
+
+### **4. Default Options:**
+```javascript
+// Khi component mount, tự động chọn options có isDefault = true
+
+Size default:
+  - Nếu có nhiều size default → Chọn size LỚN NHẤT
+  - VD: S & M đều default → Chọn M
+
+Other default:
+  - Chọn TẤT CẢ options có isDefault = true
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### **1. Load Trang:**
+```
+Parse item từ params
+  ↓
+Lọc activeOptions (status = enable)
+  ↓
+Phân loại: sizeOptions vs otherOptions
+  ↓
+Auto-select default options (size lớn nhất + all other defaults)
+  ↓
+Tính extraPrice từ options đã chọn
+  ↓
+Render UI
+```
+
+### **2. Thêm Vào Giỏ Hàng:**
+```
+User nhấn "THÊM VÀO GIỎ HÀNG"
+  ↓
+handleAddToCart() được gọi
+  ↓
+Kiểm tra isDisabled:
+  - effectiveStatus === 'disable' → Tạm ngưng
+  - isOutOfTime → Hết giờ bán
+  ↓
+Lọc selectedOptions:
+  - Với size: Chỉ lấy size LỚN NHẤT
+  - Với other: Lấy tất cả
+  ↓
+Gọi addToCart(item + selectedOptions + extraPrice, quantity, note)
+  ↓
+Alert "Đã thêm vào giỏ hàng"
+  ↓
+router.back()
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `getLargestSize(selectedSizeIndexes)`
+**Mục đích:** Tìm size lớn nhất trong danh sách đã chọn
+
+**Logic:**
+```javascript
+1. Loop qua selectedSizeIndexes
+2. Lấy order từ sizeOrder dictionary:
+   { 's': 1, 'm': 2, 'l': 3, 'xl': 4, 'xxl': 5 }
+3. So sánh order, giữ size có order cao nhất
+4. Return index của size lớn nhất
+```
+
+### `handleToggleOption(optionIndex, isSizeOption)`
+**Mục đích:** Xử lý khi user click chọn/bỏ chọn option
+
+**Logic cho Size:**
+```javascript
+if (đang chọn size này) {
+  Bỏ chọn → Xóa tất cả size khỏi selectedOptions
+} else {
+  Chọn size mới → Xóa size cũ + Thêm size mới
+}
+```
+
+**Logic cho Other Options:**
+```javascript
+if (đang chọn) {
+  Bỏ chọn → Remove khỏi array
+} else {
+  Chọn → Add vào array
+}
+```
+
+### `handleAddToCart()`
+**Validation:**
+```javascript
+if (isDisabled) {
+  Alert thông báo món tạm ngưng hoặc hết giờ bán
+  return;
+}
+```
+
+**Xử lý:**
+```javascript
+1. Lọc selectedOptions:
+   - Tìm size lớn nhất
+   - Giữ size lớn nhất + all other options
+2. Map indexes → option objects
+3. addToCart({
+     ...item,
+     selectedOptions: selectedOptionObjects,
+     extraPrice: extraPrice
+   }, quantity, note)
+4. Alert thành công
+5. router.back()
+```
+
+## 💰 TÍNH GIÁ
+
+### **Extra Price (Giá options):**
+```javascript
+extraPrice = selectedOptions
+  .map(index => find option by index)
+  .reduce((sum, opt) => sum + (opt.price * 1000), 0)
+```
+
+### **Total Price:**
+```javascript
+totalPrice = ((item.pricePromo * 1000) + extraPrice) * quantity
+```
+
+**Ví dụ:**
+- Món: 50k (pricePromo)
+- Size M: +10k
+- Topping phô mai: +5k
+- Quantity: 2
+- Total = ((50 + 10 + 5) * 2) = 130k
+
+## 🚫 DISABLE LOGIC
+
+**Món bị disable khi:**
+```javascript
+isDisabled = effectiveStatus === 'disable' || isOutOfTime
+
+effectiveStatus:
+  - 'enable' → Bình thường
+  - 'disable' → Shop tắt tạm thời
+
+isOutOfTime:
+  - Giờ hiện tại NGOÀI khoảng [timeStart, timeEnd]
+  - VD: Món chỉ bán 7h-11h, giờ 14h → isOutOfTime = true
+```
+
+**Khi disable:**
+- Nút "THÊM VÀO GIỎ HÀNG" đổi thành:
+  - "HẾT GIỜ BÁN" (nếu isOutOfTime)
+  - "TẠM NGƯNG" (nếu disable)
+- Click nút → Alert thông báo lý do
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ↓
+ScrollView
+  ├── Nút back (arrow)
+  ├── Image banner (món ăn)
+  ├── Shop info (icon + tên shop + địa chỉ)
+  ├── Tên món
+  ├── Giá (pricePromo, priceNormal gạch)
+  ├── Mô tả
+  ├── Section: Kích thước (Size options - radio)
+  ├── Section: Lựa chọn thêm (Other options - checkbox)
+  ├── Section: Ghi chú (TextInput)
+  └── Footer:
+      ├── Quantity controls (-/+)
+      └── Nút "THÊM VÀO GIỎ HÀNG" + Tổng tiền
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+✅ **Size logic thông minh** - Chỉ giữ size lớn nhất khi thêm vào giỏ
+✅ **Auto-select defaults** - Tự động chọn options có isDefault = true
+✅ **Phân loại options** - Size vs Other options, UI khác nhau
+✅ **Real-time price** - Tổng tiền cập nhật ngay khi thay đổi options/quantity
+✅ **Time-based availability** - Món chỉ bán trong giờ cụ thể
+✅ **Shop owner info** - Hiển thị tên shop, địa chỉ từ users array
+
+## 🚀 USER JOURNEY
+
+```
+User xem danh sách món → Click món
+  ↓
+Vào ItemDetail
+  ↓
+Xem thông tin: tên, giá, mô tả, shop
+  ↓
+Chọn size (1 option)
+  ↓
+Chọn topping (nhiều options)
+  ↓
+Nhập ghi chú (optional)
+  ↓
+Điều chỉnh số lượng
+  ↓
+Xem tổng tiền real-time
+  ↓
+Nhấn "THÊM VÀO GIỎ HÀNG"
+  ↓
+Alert thành công → Quay về trang trước
+```
+
+## 💡 LƯU Ý KỸ THUẬT
+
+**Size Order Dictionary:**
+```javascript
+sizeOrder = {
+  's': 1, 'size s': 1, 'small': 1,
+  'm': 2, 'size m': 2, 'medium': 2,
+  'l': 3, 'size l': 3, 'large': 3,
+  'xl': 4, 'size xl': 4, 'x-large': 4,
+  'xxl': 5, 'size xxl': 5, 'xx-large': 5
+}
+```
+- Hỗ trợ nhiều format tên size
+- Case-insensitive (toLowerCase trước khi check)
+
+**Option Structure:**
+```javascript
+{
+  name: "Size M",
+  index: 0,
+  price: 10,          // Giá thêm (nghìn đồng)
+  status: true,       // enable/disable
+  isDefault: false    // Auto-select hay không
+}
+```
+
+**AddToCart Payload:**
+```javascript
+{
+  ...item,                    // Spread tất cả thông tin món
+  selectedOptions: [...],     // Mảng option objects
+  extraPrice: 15000,          // Tổng giá options
+  quantity: 2,                // Số lượng
+  note: "Không hành"          // Ghi chú
+}
+```
+
+===============================================================================
+CẬP NHẬT: 27/01/2026
+===============================================================================

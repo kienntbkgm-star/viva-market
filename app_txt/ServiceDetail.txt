@@ -1,0 +1,355 @@
+# TÓM TẮT LOGIC TRANG SERVICEDETAIL.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang **chi tiết dịch vụ** - hiển thị thông tin dịch vụ, cho phép đặt dịch vụ (cả user và guest)
+
+## 📊 STATE & DATA
+
+**Props từ params:**
+- `item`: JSON string của dịch vụ (parse thành object)
+
+**State local:**
+- `note`: Ghi chú cho dịch vụ
+- `isSubmitting`: Trạng thái đang submit order
+- `gName`, `gPhone`, `gAddress`: Thông tin guest (nếu là guest)
+
+**Data từ Store:**
+- `users`: Danh sách user (để tìm shop owner)
+- `currentUser`: User hiện tại
+
+**Computed:**
+- `isGuestUser`: `currentUser && !currentUser.password`
+- `price`: Ưu tiên pricePromo, không có thì priceNormal
+- `displayImage`: service.img hoặc service.image
+- `shopData`: Thông tin shop từ users array
+
+## 🔄 LUỒNG THỰC THI
+
+### **1. Load Trang:**
+```
+Parse service từ params
+  ↓
+Check isGuestUser
+  ↓
+Tính price (promo hoặc normal)
+  ↓
+Tìm shopData từ users array
+  ↓
+Render UI:
+  - Nếu guest → Hiển thị form nhập thông tin
+  - Nếu user → Không hiển thị form
+```
+
+### **2. Đặt Dịch Vụ:**
+```
+User nhấn "ĐẶT DỊCH VỤ NGAY"
+  ↓
+handleCreateServiceOrder() được gọi
+  ↓
+Kiểm tra đăng nhập:
+  - Chưa login → Alert → Chuyển /login
+  ↓
+Validate thông tin:
+  Guest:
+    - Check gName, gPhone, gAddress không rỗng
+    - Validate SĐT format VN
+  User:
+    - Check currentUser.phone và address đã có chưa
+  ↓
+Tạo orderPayload với 16 trường
+  ↓
+addDoc vào Firestore collection 'serviceOrders'
+  ↓
+Alert "Thành công"
+  ↓
+router.back()
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `validatePhoneNumber(phone)`
+**Mục đích:** Validate số điện thoại Việt Nam
+
+**Logic:**
+```javascript
+const vnf_regex = /((09|03|07|08|05)+([0-9]{8})\b)/g;
+return vnf_regex.test(phone.trim());
+```
+
+**Đầu số hợp lệ:** 09, 03, 07, 08, 05 + 8 số
+
+### `handleCreateServiceOrder()`
+**Validation:**
+
+**Nếu không login:**
+```javascript
+if (!currentUser) {
+  Alert → router.push('/login')
+  return;
+}
+```
+
+**Nếu là guest:**
+```javascript
+if (isGuestUser) {
+  if (!gName || !gPhone || !gAddress) {
+    Alert "Vui lòng nhập đầy đủ thông tin"
+    return;
+  }
+  if (!validatePhoneNumber(gPhone)) {
+    Alert "SĐT không đúng định dạng VN"
+    return;
+  }
+}
+```
+
+**Nếu là user:**
+```javascript
+if (!currentUser.address || !currentUser.phone) {
+  Alert "Vui lòng cập nhật SĐT và Địa chỉ trong hồ sơ"
+  return;
+}
+```
+
+**Tạo Order:**
+```javascript
+const orderPayload = {
+  orderId: `SV-${Date.now()}`,        // Format đặc biệt cho service
+  serviceId: service.id,
+  serviceName: service.name,
+  shopId: service.shopId,
+  shopName: shopData.name,
+  userId: currentUser.id,
+  userName: isGuestUser ? gName : currentUser.name,
+  userPhone: isGuestUser ? gPhone : currentUser.phone,
+  userAddress: isGuestUser ? gAddress : currentUser.address,
+  price: price,
+  note: note.trim(),
+  status: 'pending',
+  isGuest: isGuestUser,
+  paymentMethod: 'COD',
+  createdAt: new Date().toISOString(),
+  logs: [{
+    time: new Date().toISOString(),
+    content: `Yêu cầu dịch vụ "${service.name}" đã được tạo bởi ${userName}.`,
+    status: 'pending'
+  }]
+};
+
+await addDoc(collection(db, 'serviceOrders'), orderPayload);
+```
+
+## 💰 TÍNH GIÁ
+
+```javascript
+price = useMemo(() => {
+  const promo = Number(service.pricePromo || 0) * 1000;
+  const normal = Number(service.priceNormal || 0) * 1000;
+  return promo > 0 ? promo : normal;
+}, [service.pricePromo, service.priceNormal]);
+```
+
+**Logic:**
+- Ưu tiên giá khuyến mãi (pricePromo)
+- Nếu promo = 0 → Dùng giá thường (priceNormal)
+- Nhân 1000 để đổi từ nghìn đồng sang đồng
+
+**Hiển thị giảm giá:**
+```javascript
+if (priceNormal * 1000 > price) {
+  Hiển thị: "Bạn được giảm {số tiền}đ cho dịch vụ này!"
+}
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ↓
+ScrollView
+  ├── Nút back (arrow)
+  ├── Image banner (dịch vụ)
+  ├── Shop info:
+  │   ├── Icon build
+  │   ├── Tên shop + Địa chỉ
+  │   └── Badge "Dịch vụ"
+  ├── Tên dịch vụ
+  ├── Mô tả
+  ├── Discount note (nếu có giảm giá)
+  ├── Form guest info (nếu isGuestUser):
+  │   ├── Input: Họ và tên
+  │   ├── Input: SĐT
+  │   └── Input: Địa chỉ
+  ├── Section: Ghi chú
+  └── Footer:
+      ├── Giá (đã giảm hoặc giá thường)
+      └── Nút "ĐẶT DỊCH VỤ NGAY"
+```
+
+## 👥 GUEST VS USER
+
+### **Guest User:**
+```
+isGuestUser = true
+  ↓
+Hiển thị form nhập thông tin:
+  - Họ và tên *
+  - Số điện thoại *
+  - Địa chỉ nhận dịch vụ *
+  ↓
+Validate khi submit:
+  - Không được để trống
+  - SĐT đúng format VN
+  ↓
+Tạo order với thông tin từ form
+```
+
+### **Registered User:**
+```
+isGuestUser = false
+  ↓
+KHÔNG hiển thị form nhập thông tin
+  ↓
+Validate khi submit:
+  - currentUser.phone phải có
+  - currentUser.address phải có
+  ↓
+Tạo order với thông tin từ currentUser
+```
+
+## 📋 ORDER PAYLOAD (16 TRƯỜNG)
+
+```javascript
+{
+  orderId: "SV-1738012345678",           // String với prefix SV-
+  serviceId: "sv001",                    // ID dịch vụ
+  serviceName: "Sửa chữa điện nước",     // Tên dịch vụ
+  shopId: "shop123",                     // ID shop
+  shopName: "Dịch vụ Minh Anh",          // Tên shop
+  userId: "user456",                     // ID user/guest
+  userName: "Nguyễn Văn A",              // Tên
+  userPhone: "0901234567",               // SĐT
+  userAddress: "123 Nguyễn Trãi...",     // Địa chỉ
+  price: 250000,                         // Giá (số)
+  note: "Cần sửa vào chiều",             // Ghi chú
+  status: "pending",                     // Trạng thái
+  isGuest: false,                        // Guest hay không
+  paymentMethod: "COD",                  // Phương thức thanh toán
+  createdAt: "2026-01-27T...",           // ISO string
+  logs: [{                               // Mảng lịch sử
+    time: "2026-01-27T...",
+    content: "Yêu cầu dịch vụ...",
+    status: "pending"
+  }]
+}
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+✅ **Hỗ trợ guest đặt dịch vụ** - Guest nhập thông tin tạm mỗi lần đặt
+✅ **Validate SĐT VN** - Regex check đúng format Việt Nam
+✅ **OrderID format đặc biệt** - `SV-{timestamp}` để phân biệt với food orders
+✅ **Logs tracking** - Mảng logs để theo dõi lịch sử thay đổi trạng thái
+✅ **Shop info dynamic** - Lấy tên shop, địa chỉ từ users array
+✅ **Price logic thông minh** - Ưu tiên giá khuyến mãi, hiển thị số tiền giảm
+✅ **Loading state** - Disable nút + text "ĐANG XỬ LÝ..." khi đang submit
+
+## 🚀 USER JOURNEY
+
+### **Guest User:**
+```
+Xem danh sách dịch vụ → Click dịch vụ
+  ↓
+Vào ServiceDetail
+  ↓
+Xem thông tin: tên, giá, mô tả, shop
+  ↓
+Nhập thông tin liên hệ:
+  - Họ tên
+  - SĐT
+  - Địa chỉ
+  ↓
+Nhập ghi chú (optional)
+  ↓
+Nhấn "ĐẶT DỊCH VỤ NGAY"
+  ↓
+Validate pass → Tạo order
+  ↓
+Alert thành công → Quay về
+```
+
+### **Registered User:**
+```
+Xem danh sách dịch vụ → Click dịch vụ
+  ↓
+Vào ServiceDetail
+  ↓
+Xem thông tin (không cần nhập info)
+  ↓
+Nhập ghi chú (optional)
+  ↓
+Nhấn "ĐẶT DỊCH VỤ NGAY"
+  ↓
+Check profile có SĐT + địa chỉ chưa
+  ↓
+Có → Tạo order
+Không → Alert yêu cầu cập nhật profile
+```
+
+## 🔗 NAVIGATION
+
+**Vào ServiceDetail từ:**
+- ✅ Services tab: Click vào service card
+
+**Từ ServiceDetail đi đến:**
+- ✅ Login: Nếu chưa login (click đặt dịch vụ)
+- ✅ Quay về: router.back() sau khi đặt thành công
+
+## 💡 LƯU Ý KỸ THUẬT
+
+**Parse Service:**
+```javascript
+const service = useMemo(() => {
+  try {
+    const parsed = JSON.parse(params.item || '{}');
+    return parsed.service ? parsed.service : parsed;
+  } catch {
+    return {};
+  }
+}, [params.item]);
+```
+- Hỗ trợ 2 format: `{service: {...}}` hoặc `{...}`
+
+**Shop Info Fallback:**
+```javascript
+shopData = {
+  name: owner?.shopName || owner?.name || `Đơn vị #${shopId}`,
+  address: owner?.address || 'Đang cập nhật địa chỉ'
+}
+```
+- Ưu tiên shopName, không có thì dùng name
+- Fallback: "Đơn vị #123" nếu không tìm thấy
+
+**Loading State:**
+```javascript
+isSubmitting:
+  - true → Disable nút + Text "ĐANG XỬ LÝ..."
+  - false → Enable nút + Text "ĐẶT DỊCH VỤ NGAY"
+```
+
+**Error Handling:**
+```javascript
+try {
+  await addDoc(...)
+  Alert thành công
+} catch (error) {
+  console.error(error)
+  Alert lỗi
+} finally {
+  setIsSubmitting(false)  // Luôn reset state
+}
+```
+
+===============================================================================
+CẬP NHẬT: 27/01/2026
+===============================================================================

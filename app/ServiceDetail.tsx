@@ -4,17 +4,18 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection } from 'firebase/firestore';
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
-  Image,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
+import { sendNotification } from '../src/components/Notification';
 import { db } from '../src/services/firebase';
 import { useAppStore } from '../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../src/styles/GlobalStyles';
@@ -35,10 +36,15 @@ export default function ServiceDetailScreen() {
 
   const users = useAppStore((state) => state.users);
   const currentUser = useAppStore((state) => state.currentUser);
-  const isGuest = currentUser?.password === 'guest_no_password';
+  const isGuestUser = currentUser && !currentUser.password;
 
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // State cho guest info
+  const [gName, setGName] = useState('');
+  const [gPhone, setGPhone] = useState('');
+  const [gAddress, setGAddress] = useState('');
 
   // Ảnh hiển thị
   const displayImage = useMemo(() => {
@@ -63,37 +69,89 @@ export default function ServiceDetailScreen() {
 
   const formatCurrency = (val: number) => val.toLocaleString('vi-VN');
 
+  const validatePhoneNumber = (phone: string) => {
+    const vnf_regex = /((09|03|07|08|05)+([0-9]{8})\b)/g;
+    return vnf_regex.test(phone.trim());
+  };
+
   const handleCreateServiceOrder = async () => {
     if (isSubmitting) return;
-    if (!currentUser || isGuest) {
+    if (!currentUser) {
       Alert.alert('Thông báo', 'Vui lòng đăng nhập để đặt dịch vụ.');
       router.push('/login');
       return;
     }
 
+    // Validate thông tin cho guest
+    if (isGuestUser) {
+      if (!gName.trim() || !gPhone.trim() || !gAddress.trim()) {
+        Alert.alert('Thông báo', 'Vui lòng nhập đầy đủ thông tin để đặt dịch vụ!');
+        return;
+      }
+      if (!validatePhoneNumber(gPhone)) {
+        Alert.alert('Lỗi', 'Số điện thoại không đúng định dạng Việt Nam.');
+        return;
+      }
+    } else {
+      // Validate thông tin cho user đã đăng ký
+      if (!currentUser.address || !currentUser.phone) {
+        Alert.alert('Thông báo', 'Vui lòng cập nhật SĐT và Địa chỉ trong hồ sơ.');
+        return;
+      }
+    }
+
     try {
       setIsSubmitting(true);
       const orderPayload = {
-        orderId: Date.now().toString(),
+        orderId: `SV-${Date.now()}`,
         serviceId: service.id,
         serviceName: service.name,
         shopId: service.shopId,
         shopName: shopData.name,
         userId: currentUser.id,
-        userName: currentUser.name,
-        userPhone: currentUser.phone,
-        userAddress: currentUser.address || '',
+        userName: isGuestUser ? gName : currentUser.name,
+        userPhone: isGuestUser ? gPhone : currentUser.phone,
+        userAddress: isGuestUser ? gAddress : (currentUser.address || ''),
         price: price,
         note: note.trim(),
         status: 'pending',
+        isGuest: isGuestUser,
+        paymentMethod: 'COD',
         createdAt: new Date().toISOString(),
         logs: [{
           time: new Date().toISOString(),
-          content: `Yêu cầu dịch vụ "${service.name}" đã được tạo bởi ${currentUser.name}.`,
+          content: `Yêu cầu dịch vụ "${service.name}" đã được tạo bởi ${isGuestUser ? gName : currentUser.name}.`,
           status: 'pending'
         }]
       };
       await addDoc(collection(db, 'serviceOrders'), orderPayload);
+      
+      // Gửi thông báo đến admin via Cloud Function
+      // Gửi thông báo đến admin
+      console.log('🔍 Tìm admin để gửi notification...');
+      const admins = users.filter(u => u.role === 'admin');
+      console.log('📋 Tìm thấy', admins.length, 'admin:', admins.map(a => ({ name: a.name, hasToken: !!a.expoToken })));
+      
+      // Gửi notification song song cho tất cả admin
+      const notificationPromises = admins
+        .filter(admin => admin.expoToken)
+        .map(async (admin) => {
+          console.log('📲 Gửi notif đến:', admin.name, '| Token:', admin.expoToken.substring(0, 20) + '...');
+          try {
+            await sendNotification(
+              'Đơn dịch vụ mới',
+              `Khách hàng ${isGuestUser ? gName : currentUser.name} yêu cầu dịch vụ "${service.name}"`,
+              admin.expoToken
+            );
+            console.log('✅ Gửi notification thành công cho', admin.name);
+          } catch (error) {
+            console.error('❌ Lỗi gửi notification cho', admin.name, ':', error);
+          }
+        });
+      
+      // Đợi tất cả notification gửi xong (không block UI nếu lỗi)
+      await Promise.allSettled(notificationPromises);
+      
       Alert.alert('Thành công', 'Yêu cầu dịch vụ của bạn đã được gửi.');
       router.back();
     } catch (error) {
@@ -155,6 +213,35 @@ export default function ServiceDetailScreen() {
             </Text>
           )}
 
+          {/* Form nhập thông tin cho guest */}
+          {isGuestUser && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Thông tin liên hệ</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Họ và tên *"
+                value={gName}
+                onChangeText={setGName}
+                placeholderTextColor="#999"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Số điện thoại *"
+                value={gPhone}
+                onChangeText={setGPhone}
+                keyboardType="phone-pad"
+                placeholderTextColor="#999"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Địa chỉ nhận dịch vụ *"
+                value={gAddress}
+                onChangeText={setGAddress}
+                placeholderTextColor="#999"
+              />
+            </View>
+          )}
+
           {/* Ghi chú của khách hàng */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Ghi chú cho đơn vị</Text>
@@ -180,10 +267,14 @@ export default function ServiceDetailScreen() {
           </View>
           <Text style={styles.totalPrice}>{formatCurrency(price)}đ</Text>
         </View>
-        <TouchableOpacity style={[styles.orderBtn, { backgroundColor: '#ccc' }]} disabled={true}>
-          {/* Logic đặt hàng đã bị loại bỏ */}
-          <Text style={styles.orderBtnText}>CHỨC NĂNG ĐẶT LỊCH TẠM KHÓA</Text>
-          {/* <ActivityIndicator size="small" color="#FFF" /> */}
+        <TouchableOpacity 
+          style={[styles.orderBtn, isSubmitting && { backgroundColor: '#ccc' }]} 
+          disabled={isSubmitting}
+          onPress={handleCreateServiceOrder}
+        >
+          <Text style={styles.orderBtnText}>
+            {isSubmitting ? 'ĐANG XỬ LÝ...' : 'ĐẶT DỊCH VỤ NGAY'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -238,6 +329,13 @@ const styles = StyleSheet.create({
   },
   section: { marginBottom: 25 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#333' },
+  input: { 
+    backgroundColor: '#F5F5F5', 
+    borderRadius: 12, 
+    padding: 12, 
+    marginBottom: 10,
+    fontSize: 14
+  },
   noteInput: { backgroundColor: '#F5F5F5', borderRadius: 12, padding: 12, minHeight: 80, textAlignVertical: 'top' },
   footer: { padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderColor: '#eee', paddingBottom: Platform.OS === 'ios' ? 30 : 15 },
   priceSummary: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 15 },

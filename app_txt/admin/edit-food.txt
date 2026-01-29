@@ -1,0 +1,551 @@
+# TÓM TẮT LOGIC TRANG ADMIN/EDIT-FOOD.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình thêm/sửa món ăn với đầy đủ tính năng:
+- Thêm món mới hoặc cập nhật món có sẵn
+- Upload ảnh lên ImgBB
+- Quản lý tùy chọn thêm (options): Size, Topping, v.v.
+- Cấu hình giá, giờ bán, shop, trạng thái
+- Thiết lập option mặc định (isDefault)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `foods`: Danh sách món ăn (load để edit)
+
+**Route Params:**
+- `id`: ID món ăn (nếu edit), undefined nếu tạo mới
+
+**Local State:**
+```js
+formData: {
+  id, name, img, priceNormal, pricePromo, shopId,
+  index, status, timeStart, timeEnd, type, note
+}
+options: Array<{name, price, status, isDefault, index}>
+optionForm: {name, price, status, isDefault} // Form thêm/sửa option
+editingOption: number | null // Index của option đang edit
+uploading: boolean // Trạng thái upload ảnh
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load Data (Edit Mode)
+```js
+useEffect(() => {
+  if (id) {
+    const food = foods.find(x => x.id === id);
+    setFormData(food); // Load thông tin món
+    setOptions(food.option || []); // Load options
+  }
+}, [id, foods]);
+```
+
+### 2. Upload Ảnh ImgBB
+```js
+const handlePickAndUpload = async () => {
+  // 1. Pick image từ gallery
+  const result = await ImagePicker.launchImageLibraryAsync({
+    aspect: [1, 1],
+    quality: 0.5,
+    base64: true
+  });
+  
+  // 2. Upload to ImgBB
+  const formData = new FormData();
+  formData.append('image', asset.base64);
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${API_KEY}`);
+  
+  // 3. Update form với URL
+  setFormData(prev => ({ ...prev, img: data.data.url }));
+};
+```
+
+### 3. Quản lý Options
+**Add Option:**
+```js
+const handleAddOption = () => {
+  // Validate
+  if (!optionForm.name || !optionForm.price) return;
+  
+  const newOption = {
+    name: optionForm.name,
+    price: parseFloat(optionForm.price),
+    status: optionForm.status,
+    isDefault: optionForm.isDefault,
+    index: options.length + 1
+  };
+  
+  if (editingOption !== null) {
+    // Edit mode
+    options[editingOption] = newOption;
+  } else {
+    // Add mode
+    setOptions([...options, newOption]);
+  }
+  
+  // Reset form
+  setOptionForm({ name: '', price: '', status: true, isDefault: false });
+};
+```
+
+**Edit Option:**
+```js
+const handleEditOption = (index) => {
+  const option = options[index];
+  setOptionForm(option); // Load vào form
+  setEditingOption(index); // Mark đang edit
+};
+```
+
+**Delete Option:**
+```js
+const handleDeleteOption = (index) => {
+  Alert.alert("Xác nhận xoá", "...", [
+    { text: "Xoá", onPress: () => {
+      const updated = options.filter((_, i) => i !== index);
+      // Re-index
+      setOptions(updated.map((opt, idx) => ({ ...opt, index: idx + 1 })));
+    }}
+  ]);
+};
+```
+
+**Toggle isDefault:**
+```js
+const handleToggleIsDefault = (value) => {
+  if (value) {
+    // Chỉ 1 option có isDefault=true
+    const updated = options.map(opt => ({ ...opt, isDefault: false }));
+    setOptions(updated);
+  }
+  setOptionForm({...optionForm, isDefault: value});
+};
+```
+
+### 4. Save to Firestore
+```js
+const handleSave = async () => {
+  // Validate
+  if (!formData.name || !formData.shopId || !formData.priceNormal) {
+    Alert.alert("Thiếu thông tin");
+    return;
+  }
+  
+  // Validate time
+  const start = parseInt(formData.timeStart);
+  const end = parseInt(formData.timeEnd);
+  if (start >= end) {
+    Alert.alert("Lỗi thời gian", "Giờ mở cửa phải nhỏ hơn giờ đóng cửa");
+    return;
+  }
+  
+  // Prepare payload
+  const payload = {
+    id: id || Date.now(),
+    ...formData,
+    priceNormal: Number(formData.priceNormal),
+    pricePromo: Number(formData.pricePromo || formData.priceNormal),
+    shopId: Number(formData.shopId),
+    timeStart: start < 10 ? `0${start}` : `${start}`,
+    timeEnd: end < 10 ? `0${end}` : `${end}`,
+    option: options, // Bao gồm isDefault
+    image: formData.img ? [formData.img, formData.img, formData.img] : [],
+    log: [],
+    orderCount: existingOrderCount || 0,
+    isOutOfTime: false,
+    effectiveStatus: formData.status
+  };
+  
+  // Save to Firestore
+  const docRef = doc(db, 'foods', payload.id.toString());
+  if (id) await updateDoc(docRef, payload);
+  else await setDoc(docRef, payload);
+  
+  Alert.alert("Thành công", "Đã lưu món ăn");
+  router.back();
+};
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### ImgBB Upload
+```js
+const IMGBB_API_KEY = '4be67bc1f9e424d0e25f23a35ab95c03';
+
+// Upload base64 image
+const formDataUpload = new FormData();
+formDataUpload.append('image', asset.base64);
+
+const response = await fetch(
+  `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
+  { method: 'POST', body: formDataUpload }
+);
+
+const data = await response.json();
+if (data.success) {
+  return data.data.url; // URL ảnh upload
+}
+```
+
+### Time Validation
+```js
+const validateTime = (start, end) => {
+  if (isNaN(start) || isNaN(end)) return false;
+  if (start < 0 || start > 24 || end < 0 || end > 24) return false;
+  if (start >= end) return false;
+  return true;
+};
+```
+
+### Format Time
+```js
+// Ensure 2 digits: 8 → "08"
+const formatTime = (hour) => {
+  const h = parseInt(hour);
+  return h < 10 ? `0${h}` : `${h}`;
+};
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ KeyboardAvoidingView
+  │   ├─ Header
+  │   │   ├─ Close Button
+  │   │   ├─ Title: "Sửa món ăn" / "Thêm món mới"
+  │   │   └─ Save Button
+  │   │
+  │   └─ ScrollView
+  │       ├─ Card: THÔNG TIN HIỂN THỊ
+  │       │   ├─ Tên món ăn
+  │       │   ├─ Link ảnh (với upload button)
+  │       │   └─ Mô tả/Ghi chú
+  │       │
+  │       ├─ Card: TÀI CHÍNH & QUÁN
+  │       │   ├─ Giá gốc | Giá giảm
+  │       │   └─ ShopID
+  │       │
+  │       ├─ Card: VẬN HÀNH & GIỜ BÁN
+  │       │   ├─ Giờ mở | Giờ đóng
+  │       │   ├─ Index | Phân loại (đồ ăn/đồ uống)
+  │       │   └─ Trạng thái (Switch enable/disable)
+  │       │
+  │       └─ Card: TÙY CHỌN THÊM (OPTIONS)
+  │           ├─ Option Form
+  │           │   ├─ Tên tùy chọn
+  │           │   ├─ Giá thêm
+  │           │   ├─ Hiển thị (Switch)
+  │           │   ├─ Mặc định (Switch)
+  │           │   └─ Buttons: Thêm/Cập nhật/Hủy
+  │           │
+  │           └─ Options List
+  │               └─ Option Item (map)
+  │                   ├─ Name + Default Badge (nếu có)
+  │                   ├─ Price
+  │                   ├─ Status Badge (Hiện/Ẩn)
+  │                   └─ Actions: Edit | Delete
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Options Management
+1. **Add/Edit Mode:**
+   - `editingOption = null` → Add mode
+   - `editingOption = index` → Edit mode
+   - Reuse form `optionForm` cho cả 2 chế độ
+
+2. **isDefault Logic:**
+   - Chỉ 1 option có thể isDefault=true
+   - Khi toggle isDefault=true → Reset tất cả options khác về false
+   - Hiển thị badge "Mặc định" với icon ⭐
+
+3. **Status Toggle:**
+   - `status: true` → Hiện (badge xanh)
+   - `status: false` → Ẩn (badge đỏ)
+
+4. **Re-indexing:**
+   - Mỗi khi delete option → Re-index từ 1
+   - `index: 1, 2, 3, ...`
+
+5. **Validation:**
+   - Name không rỗng
+   - Price phải là số hợp lệ
+
+### Image Upload
+6. **ImgBB Integration:**
+   - API Key: `4be67bc1f9e424d0e25f23a35ab95c03`
+   - Upload base64 image
+   - Return URL: `data.data.url`
+
+7. **Loading State:**
+   - `uploading = true` → Show ActivityIndicator
+   - Disable upload button khi đang upload
+
+8. **Image Aspect:**
+   - Aspect ratio: [1, 1] (square)
+   - Quality: 0.5 (optimize size)
+
+### Time Configuration
+9. **Time Range:**
+   - `timeStart`: 0-24 (giờ mở cửa)
+   - `timeEnd`: 0-24 (giờ đóng cửa)
+   - Validation: start < end
+
+10. **Time Format:**
+    - Store as string: "08", "23"
+    - Display: 8 → "08" (leading zero)
+
+### Type Selection
+11. **Food Type:**
+    - "đồ ăn" (default)
+    - "đồ uống"
+    - Toggle buttons style
+
+### Status Management
+12. **Status Values:**
+    - "enable" → Kích hoạt (màu xanh)
+    - "disable" → Tạm khóa (màu đỏ)
+    - Switch component
+
+### Payload Structure
+13. **Image Array:**
+    - `image: [img, img, img]` (duplicate 3 times)
+    - Legacy structure from old version
+
+14. **Additional Fields:**
+    - `log: []` (empty array for new food)
+    - `orderCount: 0` (preserve existing count)
+    - `isOutOfTime: false` (initial state)
+    - `effectiveStatus: status` (copy from status)
+
+15. **Price Fallback:**
+    - If `pricePromo` empty → Use `priceNormal`
+    - Ensure pricePromo always has value
+
+## 🚀 USER JOURNEY
+
+### Admin - Thêm món mới
+1. Navigate to `/admin/edit-food` (không có id param)
+2. Nhập thông tin cơ bản: Tên, ShopID, Giá
+3. Upload ảnh từ gallery → ImgBB
+4. Chọn loại: đồ ăn/đồ uống
+5. Cấu hình giờ bán: timeStart, timeEnd
+6. Thêm options (nếu có):
+   - Nhập name, price
+   - Toggle status, isDefault
+   - Nhấn "Thêm tùy chọn"
+7. Bật/tắt trạng thái (Switch enable/disable)
+8. Nhấn "Lưu" → Tạo document mới trong Firestore
+
+### Admin - Sửa món có sẵn
+1. Navigate to `/admin/edit-food?id=123`
+2. Load data từ `foods.find(x => x.id === id)`
+3. Populate formData và options
+4. Sửa các trường cần thiết
+5. Edit options:
+   - Nhấn Edit icon → Load vào form
+   - Sửa thông tin
+   - Nhấn "Cập nhật"
+6. Delete options:
+   - Nhấn Delete icon → Confirm → Xóa và re-index
+7. Nhấn "Lưu" → Update document trong Firestore
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không (modal-style screen)
+
+**Navigates FROM:**
+- Admin Products page → Nhấn "Sửa" trên food card
+- Admin Products page → Nhấn "Thêm món mới"
+
+**Back Navigation:**
+- Close icon (header left)
+- After save success → `router.back()`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Operations
+1. **Document ID:**
+   - Edit mode: Use existing `id`
+   - Create mode: `Date.now()` (timestamp)
+
+2. **Update vs SetDoc:**
+   - Edit: `updateDoc(docRef, payload)`
+   - Create: `setDoc(docRef, payload)`
+
+3. **Collection:** `foods`
+
+### Option Structure
+```js
+{
+  name: string,        // "Size L", "Thêm trân châu"
+  price: number,       // 8, 5 (nghìn đồng)
+  status: boolean,     // true=Hiện, false=Ẩn
+  isDefault: boolean,  // true=Mặc định, false=Không
+  index: number        // 1, 2, 3, ... (thứ tự)
+}
+```
+
+### ImgBB Response
+```js
+{
+  success: true,
+  data: {
+    url: "https://i.ibb.co/xxx/image.jpg",
+    delete_url: "...",
+    ...
+  }
+}
+```
+
+### Time Handling
+4. **Input Type:** `numeric` keyboard
+5. **MaxLength:** 2 characters (0-24)
+6. **Parse:** `parseInt()` before validation
+7. **Format:** Leading zero for single digit (8 → "08")
+
+### Price Handling
+8. **Input:** String ("50", "45")
+9. **Parse:** `Number()` before save
+10. **Display:** User nhập nghìn đồng (k)
+11. **Store:** Số nguyên (50 = 50k)
+
+### KeyboardAvoidingView
+12. **Behavior:**
+    - iOS: `"padding"`
+    - Android: `null` (không cần, keyboard push tự động)
+
+### Platform-Specific
+13. **Image Picker:**
+    - `mediaTypes`: Images only
+    - `allowsEditing`: true
+    - `base64`: true (for ImgBB)
+
+14. **Alert:**
+    - Delete option → Destructive style
+    - Save success → Normal style
+
+### State Management
+15. **Local State Only:**
+    - Không update Zustand store
+    - Chỉ save vào Firestore
+    - Store auto-update qua listener
+
+16. **Form Reset:**
+    - After add option → Reset optionForm
+    - After cancel edit → Reset optionForm + editingOption
+
+17. **Validation Timing:**
+    - On save button press (không realtime)
+    - Show Alert nếu validation fail
+
+### UI/UX Details
+18. **Card Layout:**
+    - Grouped by function (Hiển thị, Tài chính, Vận hành, Options)
+    - elevation: 2 (shadow effect)
+    - borderRadius: 15
+
+19. **Option Item Highlight:**
+    - Default option: Border red, background pink
+    - Normal option: Border gray, background white
+
+20. **Empty State:**
+    - Icon "options-outline" size 40
+    - Text "Chưa có tùy chọn nào"
+
+21. **Button States:**
+    - Add mode: "Thêm tùy chọn" + add icon
+    - Edit mode: "Cập nhật" + checkmark icon
+    - Edit mode: Show "Hủy" button
+
+## 🎯 OPTION USE CASES
+
+### 1. Size Options
+```js
+[
+  { name: "Size S", price: 0, status: true, isDefault: true },
+  { name: "Size M", price: 5, status: true, isDefault: false },
+  { name: "Size L", price: 8, status: true, isDefault: false }
+]
+```
+- User order → Default select "Size S" (price +0k)
+- Switch to "Size L" → Price +8k
+
+### 2. Topping Options
+```js
+[
+  { name: "Thêm trân châu", price: 5, status: true, isDefault: false },
+  { name: "Thêm thạch", price: 3, status: true, isDefault: false },
+  { name: "Đá riêng", price: 0, status: false, isDefault: false }
+]
+```
+- User order → Choose toppings (multiple select)
+- "Đá riêng" status=false → Không hiển thị cho user
+
+### 3. Spicy Level
+```js
+[
+  { name: "Không cay", price: 0, status: true, isDefault: true },
+  { name: "Cay vừa", price: 0, status: true, isDefault: false },
+  { name: "Cay nồng", price: 0, status: true, isDefault: false }
+]
+```
+- All options free (price=0)
+- Default: "Không cay"
+
+## 🔍 VALIDATION RULES
+
+### Required Fields
+- ✅ `name`: Không rỗng
+- ✅ `shopId`: Không rỗng, phải là số
+- ✅ `priceNormal`: Không rỗng, phải là số > 0
+
+### Optional Fields
+- `pricePromo`: Nếu rỗng → Copy từ priceNormal
+- `img`: Có thể rỗng (placeholder image)
+- `note`: Có thể rỗng
+- `options`: Có thể rỗng (không bắt buộc có option)
+
+### Time Rules
+- ✅ `timeStart` và `timeEnd`: 0-24
+- ✅ `timeStart < timeEnd`
+- ✅ Cả 2 phải là số nguyên
+
+### Option Rules (khi thêm option)
+- ✅ `name`: Không rỗng
+- ✅ `price`: Phải là số (có thể = 0)
+- ⚠️ Không validate duplicate name (có thể trùng)
+
+## 🚨 EDGE CASES
+
+1. **Upload Fail:**
+   - Network error → Alert "Lỗi Mạng"
+   - ImgBB reject → Alert "Lỗi Upload"
+   - Image quá lớn → Quality 0.5 giảm size
+
+2. **Delete Last Option:**
+   - Options length = 0 → Show empty state
+   - No error
+
+3. **Edit Option While Editing:**
+   - Cancel current edit → Reset editingOption
+   - Load new option vào form
+
+4. **Toggle Default While Editing:**
+   - Update all existing options → isDefault=false
+   - Current optionForm → isDefault=true
+
+5. **Save Without Options:**
+   - Valid → option=[] (empty array)
+   - Food vẫn tạo được
+
+6. **Duplicate Food Name:**
+   - Không validate (cho phép trùng)
+   - ID unique nên không conflict
+
+7. **Invalid ShopID:**
+   - User nhập shopId không tồn tại
+   - Food vẫn lưu được (không validate foreign key)
+   - Shop filter sẽ không hiển thị food này

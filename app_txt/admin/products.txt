@@ -1,0 +1,231 @@
+# TÓM TẮT LOGIC TRANG ADMIN/PRODUCTS.TSX
+
+## 🎯 MỤC ĐÍCH
+Quản lý danh sách món ăn/đồ uống:
+- Hiển thị tất cả foods từ Firestore
+- Bật/tắt trạng thái món (enable/disable)
+- Tìm kiếm theo tên hoặc ID
+- **XUẤT Excel** (Export) - Header chuẩn DB
+- **NHẬP Excel** (Import) - Header chuẩn DB
+- Navigate đến edit-food để chỉnh sửa chi tiết
+
+## 📊 STATE & DATA
+
+**Store:**
+- `foods`: Danh sách món ăn từ collection `foods`
+
+**Local State:**
+- `searchQuery`: Từ khóa tìm kiếm
+- `isProcessing`: Trạng thái đang xử lý import/export
+
+**Excel Structure (Header chuẩn DB):**
+```
+id, name, type, priceNormal, pricePromo, shopId, status, timeStart, timeEnd,
+note, orderCount, index, img, image, option
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### Display Flow
+1. Load `foods` từ store
+2. Filter theo `searchQuery` (tìm trong name hoặc id)
+3. Hiển thị FlatList với card món
+4. Mỗi card có Switch bật/tắt
+
+### Toggle Status
+1. Nhấn Switch
+2. Gọi `handleToggleStatus(id, currentStatus)`
+3. Toggle `enable ↔ disable`
+4. Update Firestore `foods/{id}`
+
+### Export Excel
+1. Nhấn nút Export (cloud-download)
+2. Map foods array thành format Excel:
+   - `option`: Array → String format "Size L (+8k), Thạch (+2k)"
+   - `image`: Array → String ngăn cách xuống dòng
+3. Tạo Excel file bằng XLSX library
+4. **Web:** Tự động download
+5. **Mobile:** Share file qua Sharing API
+
+### Import Excel
+1. Nhấn nút Import (cloud-upload)
+2. Chọn file Excel (.xlsx)
+3. Parse file thành JSON array
+4. Loop qua từng row:
+   - Parse `option` string → Array objects `{name, price, status, index}`
+   - Parse `image` string → Array URLs
+   - Map các field vào payload
+5. Batch write vào Firestore (merge mode)
+6. Alert thành công với số món nhập được
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleToggleStatus(id, currentStatus)`
+Bật/tắt món:
+```js
+const newStatus = currentStatus === 'enable' ? 'disable' : 'enable';
+await updateDoc(doc(db, 'foods', id.toString()), { status: newStatus });
+```
+
+### `handleExportExcel()`
+Xuất danh sách:
+```js
+const dataToExport = foods.map(item => {
+  const optionsString = (item.option || [])
+    .map(opt => `${opt.name} (+${opt.price}k)`)
+    .join(', ');
+  const imagesString = (item.image || []).join('\n');
+  
+  return {
+    id: item.id,
+    name: item.name,
+    // ... all fields
+    option: optionsString,
+    image: imagesString
+  };
+});
+
+const ws = XLSX.utils.json_to_sheet(dataToExport);
+const wb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb, ws, "MenuData");
+const fileName = `DB_Foods_${Date.now()}.xlsx`;
+
+// Web: XLSX.writeFile(wb, fileName);
+// Mobile: FileSystem + Sharing
+```
+
+### `handleImportExcel()`
+Nhập từ file:
+```js
+// Parse options: "Size L (+8k), Thạch (+2k)"
+let optionList = [];
+if (row["option"]) {
+  const rawOpts = row["option"].toString().split(',');
+  rawOpts.forEach((str, idx) => {
+    const match = str.trim().match(/^(.*)\s\(\+(\d+)k\)$/);
+    if (match) {
+      optionList.push({
+        name: match[1].trim(),
+        price: parseInt(match[2]),
+        status: true,
+        index: idx + 1
+      });
+    }
+  });
+}
+
+// Parse images: "url1\nurl2\nurl3"
+let imageList = [];
+if (row["image"]) {
+  imageList = row["image"].toString().split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+}
+
+const payload = { id, name, type, priceNormal, pricePromo, shopId, status, ... };
+batch.set(docRef, payload, { merge: true });
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Quản lý thực đơn"
+  │   └─ Button Group
+  │       ├─ Import Button (cloud-upload, #2980B9)
+  │       ├─ Export Button (cloud-download, #27AE60)
+  │       └─ Add Button (add, primary color)
+  │
+  ├─ Search Container
+  │   └─ TextInput: "Tìm tên món hoặc ID..."
+  │
+  └─ FlatList (Product Cards)
+      └─ renderProductItem: Card
+          ├─ Image (80x80)
+          ├─ Info
+          │   ├─ Row: Name + ID + Switch
+          │   ├─ Price (pricePromo + oldPrice strikethrough)
+          │   ├─ Time: timeStart - timeEnd
+          │   └─ Status Label (Đang bán/Tạm nghỉ/Đã ẩn)
+          │
+          └─ onPress: Navigate to /admin/edit-food
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Header chuẩn DB:** Export/Import dùng đúng tên field trong Firestore (không viết hoa, không thêm ký tự)
+2. **Option Format:** String "Tên (+Giá k)" cho dễ edit trong Excel
+3. **Image Array:** Ngăn cách bởi xuống dòng trong Excel
+4. **Batch Write:** Dùng `writeBatch` để import nhiều món cùng lúc (hiệu suất cao)
+5. **Merge Mode:** `{merge: true}` để không ghi đè toàn bộ document
+6. **Platform Specific:** Web dùng `XLSX.writeFile()`, Mobile dùng `FileSystem + Sharing`
+7. **ID Generation:** Nếu Excel thiếu ID → Tạo `Date.now() + random`
+8. **Status Toggle:** Switch có `stopPropagation` để không trigger navigate
+9. **Disabled Card:** Opacity 0.8 khi `effectiveStatus !== 'enable'`
+10. **ActivityIndicator:** Hiện spinner khi đang import/export
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào Admin Products từ dashboard
+2. Xem danh sách món
+3. **Export:** Nhấn nút Export → Download Excel
+4. **Edit Excel:** Mở file, sửa món, thêm món mới
+5. **Import:** Nhấn nút Import → Chọn file → Confirm
+6. **Toggle món:** Nhấn Switch để bật/tắt
+7. **Edit món:** Nhấn card → Edit-food page
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/admin/edit-food` (nhấn card hoặc nút Add)
+
+**Navigates FROM:**
+- `/admin` (dashboard menu "Quản lý Món ăn")
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Excel Column Names:**
+   - Phải match chính xác với field trong Firestore
+   - Viết thường: `id`, `name`, `priceNormal` (không phải `ID`, `Name`, `Price_Normal`)
+2. **Option Parse Regex:**
+   ```js
+   /^(.*)\s\(\+(\d+)k\)$/
+   ```
+   Match format: "Tên (+Số k)"
+3. **Image Split:**
+   ```js
+   .split(/[,\n]+/)
+   ```
+   Support cả dấu phẩy và xuống dòng
+4. **Number Conversion:**
+   ```js
+   priceNormal: Number(row["priceNormal"]) || 0
+   ```
+   Fallback về 0 nếu rỗng
+5. **Time Fields:** `timeStart`, `timeEnd` là number (0-24)
+6. **Status Values:** 'enable' | 'disable' (string)
+7. **effectiveStatus:** Copy từ `status` để sync
+8. **isOutOfTime:** Mặc định `false` khi import
+9. **Image Fallback:** Nếu không có `image` array, dùng `img` field
+10. **Batch Limit:** Firestore batch tối đa 500 ops (cần split nếu import > 500)
+11. **File Extension:** `.xlsx` (OpenXML format), không support `.xls` cũ
+12. **Mobile Permissions:** Cần permission đọc file trên Android/iOS
+13. **Error Handling:** Wrap trong try-catch, alert lỗi cho user
+14. **Loading State:** Disable nút Import/Export khi `isProcessing = true`
+15. **Success Message:** Alert số món đã import thành công
+
+## 🔍 SO SÁNH VỚI SERVICES/PROMOS/USERS
+
+**Giống:**
+- Cùng pattern Import/Export Excel
+- Cùng cấu trúc UI: Header + Search + List + Toggle
+- Cùng navigate đến edit page
+
+**Khác:**
+- Products: Parse phức tạp (option, image array)
+- Products: Có logic time (timeStart, timeEnd)
+- Products: Có shopId field (thuộc về shop cụ thể)
+- Services: Có moneyShare field (% chia sẻ)
+- Promos: Có usedBy array, durationDays
+- Users: Có nhiều field nhất (role, password, checkIn...)

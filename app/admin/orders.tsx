@@ -3,20 +3,43 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
-  FlatList,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    FlatList,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
 
+// Tính finalTotal realtime từ items array
+const calculateFinalTotal = (order) => {
+  if (!order.items || order.items.length === 0) return 0;
+  
+  const activeItems = order.items.filter(item => !item.itemStatus || item.itemStatus === 'active');
+  
+  const totalFood = activeItems.reduce((sum, item) => {
+    const basePrice = item.pricePromo || 0;
+    const optionsPrice = (item.selectedOptions || []).reduce((s, opt) => s + (opt.price || 0), 0);
+    return sum + (basePrice + optionsPrice) * item.quantity;
+  }, 0);
+  
+  const shopIds = new Set(activeItems.map(item => item.shopId));
+  const shopCount = shopIds.size;
+  const multiShopFee = order.multiShopFee || 0;
+  const extraStepFee = shopCount > 1 ? (shopCount - 1) * multiShopFee : 0;
+  
+  const baseShip = order.baseShip || 0;
+  const discount = order.discount || 0;
+  
+  return totalFood + baseShip + extraStepFee - discount;
+};
+
 export default function AdminOrdersScreen() {
   const router = useRouter();
-  const { foodOrders, serviceOrders } = useAppStore();
+  const { foodOrders } = useAppStore();
   
   const [filterStatus, setFilterStatus] = useState('pending');
 
@@ -34,25 +57,9 @@ export default function AdminOrdersScreen() {
     return s === 'pendding' ? 'pending' : s;
   };
 
-  // Hàm đếm số lượng đơn hàng PENDING (chỉ đếm pending)
+  // Hàm đếm số lượng đơn món ăn PENDING
   const getPendingCount = () => {
-    let count = 0;
-    
-    // Đếm food orders pending
-    foodOrders.forEach(order => {
-      if (normalizeStatus(order.status) === 'pending') {
-        count++;
-      }
-    });
-    
-    // Đếm service orders pending
-    serviceOrders.forEach(order => {
-      if (normalizeStatus(order.status) === 'pending') {
-        count++;
-      }
-    });
-    
-    return count;
+    return foodOrders.filter(order => normalizeStatus(order.status) === 'pending').length;
   };
 
   const getStatusColor = (status) => {
@@ -65,32 +72,34 @@ export default function AdminOrdersScreen() {
     }
   };
 
-  // Lọc danh sách theo đúng filterStatus
-  const allOrders = useMemo(() => {
-    const food = foodOrders.map(order => ({ ...order, orderType: 'food' }));
-    const service = serviceOrders.map(order => ({ ...order, orderType: 'service' }));
-    return [...food, ...service];
-  }, [foodOrders, serviceOrders]);
-
-  const filteredOrders = allOrders
-    .filter(order => normalizeStatus(order.status) === filterStatus)
-    .sort((a, b) => new Date(b.createdAt || b.timeCreate || 0) - new Date(a.createdAt || a.timeCreate || 0));
+  // Lọc danh sách đơn món ăn theo status
+  const filteredOrders = useMemo(() => {
+    return foodOrders
+      .filter(order => normalizeStatus(order.status) === filterStatus)
+      .sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.timeCreate || 0).getTime();
+        const timeB = new Date(b.createdAt || b.timeCreate || 0).getTime();
+        return timeB - timeA;
+      });
+  }, [foodOrders, filterStatus]);
 
   const renderOrderItem = ({ item }) => {
     const normalizedStatus = normalizeStatus(item.status);
+    
     return (
     <TouchableOpacity 
-      style={styles.orderCard}
+      style={[styles.orderCard, { borderLeftWidth: 4, borderLeftColor: '#E67E22' }]}
       onPress={() => {
-        if (item.orderType === 'service') {
-          router.push({ pathname: '/admin/service-order-detail', params: { orderId: item.orderId || item.id } });
-        } else {
-          router.push({ pathname: '/admin/order-detail', params: { orderId: item.orderId || item.id } });
-        }
+        router.push({ pathname: '/admin/order-detail', params: { orderId: item.orderId || item.id } });
       }}
     >
       <View style={styles.orderHeader}>
-        <Text style={styles.orderId}>#{String(item.orderId || item.id)}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={[styles.typeBadge, { backgroundColor: '#E67E22' }]}>
+            <Ionicons name="fast-food" size={14} color="#fff" />
+          </View>
+          <Text style={styles.orderId}>#{String(item.orderId || item.id)}</Text>
+        </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(normalizedStatus) }]}>
           <Text style={styles.statusText}>
             {statusList.find(s => s.id === normalizedStatus)?.label || item.status}
@@ -104,15 +113,20 @@ export default function AdminOrdersScreen() {
       </View>
 
       <Text style={styles.addressText} numberOfLines={1}>
-        <Ionicons name="location" size={13} color="#999" /> {item.address || "Chưa có địa chỉ"}
+        <Ionicons name="location" size={13} color="#999" /> {item.userAddress || item.address || "Chưa có địa chỉ"}
       </Text>
 
       <View style={styles.orderFooter}>
         <Text style={styles.timeText}>
-          {item.timeCreate ? item.timeCreate : new Date(item.createdAt).toLocaleTimeString('vi-VN')}
+          {item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }) : (item.timeCreate || 'N/A')}
         </Text>
         <Text style={styles.totalPrice}>
-            {((item.finalTotal || item.value?.total || 0) * 1000).toLocaleString()}đ
+          {(calculateFinalTotal(item) * 1000).toLocaleString()}đ
         </Text>
       </View>
     </TouchableOpacity>
@@ -125,7 +139,7 @@ export default function AdminOrdersScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={28} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Giám sát đơn hàng</Text>
+        <Text style={styles.headerTitle}>Đơn Món ăn</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -188,6 +202,7 @@ const styles = StyleSheet.create({
   activeTabText: { color: COLORS.primary },
   orderCard: { backgroundColor: '#fff', borderRadius: 12, padding: 15, marginBottom: 12, elevation: 3 },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  typeBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   orderId: { fontWeight: 'bold', color: '#555', fontSize: 13 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
   statusText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },

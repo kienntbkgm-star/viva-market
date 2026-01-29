@@ -1,0 +1,209 @@
+# TÓM TẮT LOGIC TRANG CART.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang giỏ hàng cho phép:
+- Xem danh sách món đã thêm vào giỏ
+- Chỉnh số lượng món (tăng/giảm)
+- Chọn hình thức giao hàng (Tại sảnh / Tại cửa)
+- Chọn mã ưu đãi (promos)
+- Nhập thông tin giao hàng (cho khách vãng lai)
+- Xác nhận đặt hàng
+
+## 📊 STATE & DATA
+
+**Store:**
+- `cart`: danh sách món trong giỏ
+- `currentUser`: thông tin user hiện tại
+- `system`: cấu hình hệ thống (phí ship)
+- `promos`: danh sách mã ưu đãi
+- `users`: danh sách người dùng (để lấy shopName)
+
+**Local State:**
+- `shipType`: 'normal' hoặc 'atDoor'
+- `appliedPromo`: mã ưu đãi đang chọn (null nếu không chọn)
+- `loading`: trạng thái đang xử lý đơn
+- `isSuccess`: đặt hàng thành công
+- `showConfirm`: hiện modal xác nhận
+- `gName`, `gPhone`, `gAddress`: thông tin giao hàng cho guest
+
+## 🔄 LUỒNG THỰC THI
+
+1. **Hiển thị giỏ hàng:** FlatList cart items
+2. **Tính toán giá:**
+   - `subTotal`: Tổng tiền món (bao gồm giá món + giá option)
+   - `baseShipFee`: Phí ship cơ bản (normal/atDoor)
+   - `extraStepFee`: Phí thêm quán (số shop - 1) * stepPrice
+   - `discount`: Giảm giá từ promo (percent/freeship/fixed)
+   - `finalTotal`: Tổng cuối = subTotal + totalShipFee - discount
+3. **Chọn promo:** Nhấn vào promo ticket để apply/remove
+4. **Nhấn ĐẶT HÀNG NGAY:** Gọi `handleOpenConfirm()`
+   - Validate thông tin giao hàng (guest/user)
+   - Hiện modal xác nhận
+5. **Xác nhận đơn:** Gọi `handleConfirmOrder()`
+   - Tạo orderId: `FOOD-{timestamp}`
+   - Tạo order object (14 fields)
+   - Lưu vào Firestore `foodOrders`
+   - Cộng điểm cho user (nếu không phải guest)
+   - Xóa giỏ hàng
+   - Hiển thị màn hình thành công
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `formatCurrency(val)`
+Chuyển đổi số sang định dạng VNĐ:
+```js
+(val * 1000).toLocaleString('vi-VN')
+```
+
+### `getShopNameFromId(shopId)`
+Lấy tên shop từ users array:
+```js
+const shopData = users?.find(u => u.id === shopId || u.uid === shopId);
+return shopData?.shopName || `Quán #${shopId}`;
+```
+
+### `validatePhoneNumber(phone)`
+Validate số điện thoại Việt Nam:
+```js
+const vnf_regex = /((09|03|07|08|05)+([0-9]{8})\b)/g;
+return vnf_regex.test(phone.trim());
+```
+
+### `handleOpenConfirm()`
+Kiểm tra trước khi mở modal xác nhận:
+- Cart không rỗng
+- Guest: phải nhập đầy đủ name/phone/address và phone hợp lệ
+- User: phải có address và phone trong profile
+
+### `handleConfirmOrder()`
+Tạo đơn hàng mới:
+```js
+const orderId = `FOOD-${Date.now()}`;
+const newOrder = {
+  orderId, userId, userName, userPhone, address,
+  items: cart.map(item => ({...item, shopName: getShopNameFromId(item.shopId)})),
+  totalFood: subTotal, baseShip, extraStepFee, shopCount, discount, finalTotal,
+  shipType, status: 'pending', paymentMethod: 'COD',
+  createdAt: new Date().toISOString(),
+  isGuest: isGuestUser || !currentUser,
+  promoCode: appliedPromo?.code || "",
+  logs: [...]
+};
+await addDoc(collection(db, 'foodOrders'), newOrder);
+```
+
+### Logic tính phí ship theo số shop
+```js
+const uniqueShopsCount = new Set(cart.map(item => item.shopId)).size;
+const extraStepFee = uniqueShopsCount > 1 ? (uniqueShopsCount - 1) * stepPrice : 0;
+const totalShipFee = baseShipFee + extraStepFee;
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header (Tiêu đề "Giỏ hàng" + Nút "Xóa hết")
+  │
+  ├─ FlatList (Cart Items)
+  │   └─ renderItem: Card món
+  │       ├─ Image
+  │       ├─ Name + Options + Price + Shop
+  │       └─ Quantity Box (+/-)
+  │
+  └─ ScrollView (Summary)
+      ├─ Section: Thông tin giao hàng (guest only)
+      │   └─ 3 TextInput: Tên/SĐT/Địa chỉ
+      │
+      ├─ Section: Ưu đãi (Promo Tickets)
+      │   └─ ScrollView ngang: Danh sách promo
+      │
+      ├─ Section: Hình thức nhận hàng (nếu normal ≠ atDoor)
+      │   └─ 2 buttons: Tại sảnh / Tại cửa
+      │
+      ├─ Price Container
+      │   ├─ Tạm tính
+      │   ├─ Phí ship
+      │   ├─ Phí thêm quán (nếu > 1 shop)
+      │   ├─ Giảm giá (nếu có promo)
+      │   └─ TỔNG CỘNG
+      │
+      └─ Button: ĐẶT HÀNG NGAY
+
+Modal (Xác nhận đơn hàng)
+  ├─ Icon help-circle
+  ├─ Text: "Xác nhận đặt hàng?"
+  ├─ Text: Số shop (nếu > 1)
+  └─ 2 Buttons: HỦY / ĐỒNG Ý
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Guest Support:** Hiển thị form nhập thông tin giao hàng cho guest (`!currentUser || currentUser && !currentUser.password`)
+2. **Multi-shop Order:** Tính phí thêm quán nếu đơn hàng có món từ nhiều shop khác nhau
+3. **Promo Types:**
+   - `percent`: Giảm % (có maxDiscount)
+   - `freeship`: Giảm phí ship (tối đa = totalShipFee)
+   - `fixed`: Giảm số tiền cố định
+4. **Ship Type Toggle:** Chỉ hiện khi `normalShipPrice !== atDoorShipPrice`
+5. **Success Screen:** Hiển thị icon checkmark + nút "TIẾP TỤC MUA SẮM"
+6. **Point Reward:** Cộng `Math.floor(finalTotal / 10)` điểm cho user (không cộng guest)
+7. **ShopName in items:** Mỗi món trong order được gắn thêm `shopName` để dễ hiển thị
+8. **Logs Array:** Lưu lịch sử đơn hàng ngay từ lúc tạo
+9. **Price Calculation Fix:** Tính tạm tính bao gồm cả `extraPrice` từ option
+10. **Modal Overlay:** Dùng transparent background + fade animation
+
+## 🚀 USER JOURNEY
+
+**Khách vãng lai:**
+1. Vào Cart (đã thêm món từ ItemDetail)
+2. Nhập thông tin: Tên, SĐT, Địa chỉ
+3. Chọn promo (nếu có)
+4. Chọn hình thức giao hàng
+5. Nhấn ĐẶT HÀNG NGAY
+6. Xác nhận modal → Đơn hàng được tạo
+7. Màn hình thành công → Quay home
+
+**User thường:**
+1. Vào Cart (đã có SĐT và địa chỉ trong profile)
+2. Chọn promo (nếu có)
+3. Chọn hình thức giao hàng
+4. Nhấn ĐẶT HÀNG NGAY
+5. Xác nhận modal → Đơn hàng được tạo
+6. Màn hình thành công → Quay home
+7. Nhận điểm thưởng
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/(tabs)/home` (sau khi đặt hàng thành công)
+
+**Navigates FROM:**
+- `home.tsx` (nút giỏ hàng)
+- Bottom tab navigation
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Guest Detection:** `const isGuestUser = currentUser && !currentUser.password`
+2. **Order ID format:** `FOOD-{timestamp}`
+3. **Item Price Calculation:**
+   ```js
+   const itemPrice = (item.pricePromo || item.priceNormal) * 1000;
+   const optionPrice = item.extraPrice || 0;
+   const totalPrice = (itemPrice + optionPrice) * item.quantity;
+   ```
+4. **shipConfig từ system:**
+   ```js
+   const shipConfig = system?.ship?.food;
+   const normalShipPrice = shipConfig?.normalValue || 11;
+   const atDoorShipPrice = shipConfig?.atDoorValue || 15;
+   const stepPrice = shipConfig?.step || 5;
+   ```
+5. **Promo filter:** Chỉ hiển thị promo có `enable = true`
+6. **Promo UI:** Active promo có background COLORS.primary, inactive có background #fff
+7. **Validation flow:** Validate trước khi mở modal, không validate lại khi confirm
+8. **Loading state:** Disable nút khi đang xử lý
+9. **Clear cart:** Gọi `clearCart()` sau khi tạo đơn thành công
+10. **Payment method:** Hiện tại hardcode `COD`, chưa có option khác
+11. **Alert platform-specific:** Web dùng `window.alert()`, native dùng `Alert.alert()`
+12. **Image source:** Ưu tiên `item.img`, fallback sang `item.image[0]` nếu là array

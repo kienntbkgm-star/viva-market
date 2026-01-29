@@ -143,6 +143,7 @@ export interface User {
   point?: number;
   expoToken?: string;
   createdAt?: string;
+  isResidentShop?: boolean;
 }
 
 // ============= SYSTEM CONFIG =============

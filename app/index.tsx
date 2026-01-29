@@ -1,4 +1,6 @@
+import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
+import { doc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -10,6 +12,8 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { sendNotification } from '../src/components/Notification';
+import { db } from '../src/services/firebase';
 import { useAppStore } from '../src/store/useAppStore';
 import { COLORS, GlobalStyles, VALUES } from '../src/styles/GlobalStyles';
 
@@ -39,6 +43,9 @@ export default function DebugDataScreen() {
   const [backupStatus, setBackupStatus] = useState<string>('');
   const [copySuccess, setCopySuccess] = useState<string>('');
   const [copyFullSuccess, setCopyFullSuccess] = useState<string>('');
+  const [testActionStatus, setTestActionStatus] = useState<string>('');
+  const [selectedUser, setSelectedUser] = useState<string>('');
+  const [notificationStatus, setNotificationStatus] = useState<string>('');
 
   const {
     foodOrders,
@@ -57,13 +64,38 @@ export default function DebugDataScreen() {
     restoreSession
   } = useAppStore();
 
+  // --- HÀM ĐẶT READY DATE = TODAY CHO TẤT CẢ USER (ĐỂ TEST) ---
+  const handleSetAllUsersReady = async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      setTestActionStatus('⏳ Đang cập nhật...');
+      
+      // Update tất cả users
+      const updatePromises = users.map(user => {
+        const userRef = doc(db, 'users', user.id.toString());
+        return updateDoc(userRef, {
+          isReady: true,
+          readyDate: today
+        });
+      });
+      
+      await Promise.all(updatePromises);
+      setTestActionStatus(`✅ Đã set ready cho ${users.length} users!`);
+      
+      setTimeout(() => setTestActionStatus(''), 3000);
+    } catch (error) {
+      console.error('Lỗi set ready:', error);
+      setTestActionStatus('❌ Lỗi cập nhật!');
+    }
+  };
+
   // Check và điều hướng thông minh khi load xong
   const handleNavigateToApp = async () => {
     // Thử restore session từ AsyncStorage
     const restored = await restoreSession();
     
     if (restored) {
-      // User thường đã login → vào Home
+      // Luôn vào home trước
       router.replace('/(tabs)/home');
     } else {
       // Guest hoặc chưa login → vào Login
@@ -230,6 +262,42 @@ export default function DebugDataScreen() {
     }
   }, [isLoading, system, foods]);
 
+  // Gửi notification test
+  const handleSendNotification = async () => {
+    if (!selectedUser) {
+      setNotificationStatus('❌ Vui lòng chọn user!');
+      setTimeout(() => setNotificationStatus(''), 3000);
+      return;
+    }
+    
+    try {
+      setNotificationStatus('⏳ Đang gửi...');
+      const user = users.find(u => u.id.toString() === selectedUser);
+      
+      if (!user) {
+        setNotificationStatus('❌ User không tìm thấy!');
+        setTimeout(() => setNotificationStatus(''), 3000);
+        return;
+      }
+
+      if (!user.expoToken) {
+        setNotificationStatus('❌ User không có Expo Token!');
+        setTimeout(() => setNotificationStatus(''), 3000);
+        return;
+      }
+
+      console.log("📱 Gửi notification cho user:", user.name, "Token:", user.expoToken.substring(0, 20) + "...");
+      
+      await sendNotification('Test Notification', 'Đây là thông báo test từ admin!', user.expoToken);
+      setNotificationStatus(`✅ Đã gửi thành công cho ${user.name}!`);
+      setTimeout(() => setNotificationStatus(''), 3000);
+    } catch (error) {
+      console.error('Lỗi gửi notification:', error);
+      setNotificationStatus(`❌ Lỗi: ${error.message || 'Gửi thất bại'}`);
+      setTimeout(() => setNotificationStatus(''), 5000);
+    }
+  };
+
   return (
     <View style={GlobalStyles.container}>
       <Text style={styles.header}>HỆ THỐNG ĐỐI SOÁT DỮ LIỆU</Text>
@@ -324,8 +392,51 @@ export default function DebugDataScreen() {
             </ScrollView>
           </View>
 
+          {/* Notification Section */}
+          <View style={styles.notificationSection}>
+            <Text style={styles.sectionTitle}>Gửi Notification Test</Text>
+            <Picker
+              selectedValue={selectedUser}
+              onValueChange={(itemValue) => setSelectedUser(itemValue)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Chọn user..." value="" />
+              {users.filter(u => u.expoToken).map(user => (
+                <Picker.Item 
+                  key={user.id} 
+                  label={`${user.name} (${user.phone}) - ${user.role}${user.shopName ? ` - ${user.shopName}` : ''}`} 
+                  value={user.id.toString()} 
+                />
+              ))}
+            </Picker>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.notificationButton]}
+              onPress={handleSendNotification}
+            >
+              <Text style={styles.actionButtonText}>📲 Gửi Notif</Text>
+            </TouchableOpacity>
+            {notificationStatus ? (
+              <Text style={[
+                styles.backupStatus,
+                notificationStatus.includes('✅') ? styles.backupSuccess : styles.backupError
+              ]}>
+                {notificationStatus}
+              </Text>
+            ) : null}
+          </View>
+
           {/* Backup Status and Actions */}
           <View style={styles.footer}>
+            {/* Test Action Status */}
+            {testActionStatus ? (
+              <Text style={[
+                styles.backupStatus,
+                testActionStatus.includes('✅') ? styles.backupSuccess : styles.backupError
+              ]}>
+                {testActionStatus}
+              </Text>
+            ) : null}
+            
             {/* Sẽ không hiển thị status text vì state rỗng */}
             {backupStatus ? (
               <Text style={[
@@ -337,6 +448,13 @@ export default function DebugDataScreen() {
             ) : null}
             
             <View style={styles.actionButtons}>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.testButton]}
+                onPress={handleSetAllUsersReady}
+              >
+                <Text style={styles.actionButtonText}>🧪 SET ALL READY</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 style={[styles.actionButton, styles.backupButton]}
                 onPress={handleFullBackup}
@@ -575,5 +693,35 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  
+  // Notification Section
+  notificationSection: {
+    marginHorizontal: 15,
+    marginVertical: 10,
+    padding: 15,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  picker: {
+    height: 50,
+    marginBottom: 10,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 6,
+  },
+  notificationButton: {
+    backgroundColor: '#FF9800',
   },
 });

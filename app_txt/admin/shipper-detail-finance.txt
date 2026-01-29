@@ -1,0 +1,607 @@
+# TÓM TẮT LOGIC TRANG ADMIN/SHIPPER-DETAIL-FINANCE.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình quản lý tài chính chi tiết của 1 shipper cụ thể (admin view):
+- Xem lịch sử giao dịch (transactions) của shipper
+- Hiển thị số dư nợ hiện tại (tổng tất cả transactions)
+- Admin thu tiền mặt từ shipper (nếu shipper nợ)
+- Admin trả tiền bù cho shipper (nếu admin nợ shipper)
+- Auto đảo dấu logic thông minh
+
+## 📊 STATE & DATA
+
+**Route Params:**
+- `shipperId`: ID của shipper cần quản lý
+- `name`: Tên shipper (hiển thị trong header)
+
+**Local State:**
+```js
+transactions: Array<Transaction> // Danh sách giao dịch của shipper
+payAmount: string // Số tiền admin nhập để thu/trả (đơn vị đồng)
+```
+
+**Realtime Listener:**
+- Query `transactions` collection
+- Filter by `userId === shipperId`
+- OrderBy `createdAt` desc (sắp xếp bằng JS, không dùng Firestore orderBy)
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load Transactions
+```js
+useEffect(() => {
+  if (!shipperId) return;
+  
+  // Query WITHOUT orderBy (avoid Firestore index error)
+  const q = query(
+    collection(db, 'transactions'),
+    where('userId', '==', Number(shipperId))
+  );
+  
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    // 1. Get data
+    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // 2. Sort in JavaScript (safe, no Firestore index required)
+    data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    setTransactions(data);
+  });
+  
+  return () => unsubscribe();
+}, [shipperId]);
+```
+
+### 2. Calculate Total Balance
+```js
+const totalBalance = transactions.reduce(
+  (sum, t) => sum + (t.amount || 0), 
+  0
+);
+
+// totalBalance > 0: Shipper nợ Admin
+// totalBalance < 0: Admin nợ Shipper
+// totalBalance = 0: Không nợ
+```
+
+### 3. Collect Money (Thu/Trả tiền)
+```js
+const handleCollectMoney = async () => {
+  // Validation
+  if (!payAmount || isNaN(payAmount)) {
+    Alert("Vui lòng nhập số tiền hợp lệ");
+    return;
+  }
+  
+  // Convert to thousands
+  const inputVal = Number(payAmount) / 1000;
+  
+  /**
+   * AUTO FLIP SIGN LOGIC:
+   * - Nếu totalBalance > 0 (Shipper nợ): Cần nạp số ÂM để giảm nợ
+   * - Nếu totalBalance < 0 (Admin nợ): Cần nạp số DƯƠNG để giảm nợ
+   */
+  const finalAmount = totalBalance >= 0 ? -inputVal : inputVal;
+  
+  // Add transaction
+  await addDoc(collection(db, 'transactions'), {
+    userId: Number(shipperId),
+    userName: name,
+    type: 'PAYMENT',
+    amount: Math.round(finalAmount * 1000) / 1000, // Round to 3 decimals
+    desc: totalBalance >= 0 
+      ? 'Admin thu tiền mặt' 
+      : 'Admin trả tiền bù (Voucher/Ship)',
+    createdAt: new Date().toISOString(),
+    performedBy: 'admin'
+  });
+  
+  setPayAmount(''); // Clear input
+  Alert("Đã cập nhật giao dịch tài chính thành công");
+};
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### Auto Flip Sign Logic
+```js
+// Magic formula:
+const finalAmount = totalBalance >= 0 ? -inputVal : inputVal;
+
+// Example 1: Shipper owes 50k
+// - totalBalance = 50 (positive)
+// - inputVal = 30 (admin collect 30k cash)
+// - finalAmount = -30 (subtract from debt)
+// - New balance = 50 + (-30) = 20 (still owe 20k)
+
+// Example 2: Admin owes 20k
+// - totalBalance = -20 (negative)
+// - inputVal = 10 (admin pay 10k cash)
+// - finalAmount = 10 (add to balance)
+// - New balance = -20 + 10 = -10 (still owe 10k)
+```
+
+### Round to 3 Decimals
+```js
+// Fix JavaScript floating point precision
+Math.round(finalAmount * 1000) / 1000
+
+// Example:
+// 0.30000000000000004 → 0.300
+```
+
+### Platform-Specific Alert
+```js
+if (Platform.OS === 'web') {
+  window.alert(message);
+} else {
+  Alert.alert("Title", message);
+}
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Lịch sử nợ: [name]"
+  │   └─ Spacer
+  │
+  ├─ Summary Section
+  │   ├─ Label: "Số dư nợ hiện tại (Dương: Shipper nợ | Âm: Admin nợ)"
+  │   └─ Value: [totalBalance] (color: orange if >=0, green if <0)
+  │
+  ├─ Collect Box (Input + Button)
+  │   ├─ TextInput: "Nhập số tiền mặt giao nhận" (numeric keyboard)
+  │   └─ Button: "THU NỢ" (if balance >=0) / "TRẢ TIỀN" (if balance <0)
+  │       Background color: Orange (thu) / Green (trả)
+  │
+  └─ FlatList: Transaction Items
+      └─ renderItem: Transaction Row
+          ├─ Desc (bold)
+          ├─ OrderId (if exists, debug info, monospace)
+          ├─ Date (gray, small)
+          └─ Amount (color: orange if >=0, green if <0)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Firestore Index Optimization
+1. **Problem:**
+   - `orderBy('createdAt', 'desc')` requires Firestore composite index
+   - Index creation slow/error-prone
+
+2. **Solution:**
+   - Query WITHOUT orderBy: `where('userId', '==', shipperId)`
+   - Sort in JavaScript: `data.sort((a,b) => ...)`
+   - Safe, no index required
+
+### Auto Flip Sign Logic
+3. **Smart Logic:**
+   - Admin không cần chọn "Thu" hay "Trả"
+   - System tự động detect dựa trên balance
+   - Balance >= 0 → Button "THU NỢ", amount âm
+   - Balance < 0 → Button "TRẢ TIỀN", amount dương
+
+4. **Why?**
+   - Giảm lỗi admin nhập sai dấu
+   - UI đơn giản, chỉ 1 input + 1 button
+   - Logic consistent: Balance + amount = New balance
+
+### Balance Color Coding
+5. **Color Rules:**
+   - `>= 0`: #E67E22 (orange) - "Shipper nợ Admin"
+   - `< 0`: #27AE60 (green) - "Admin nợ shipper"
+
+6. **Display:**
+   - Positive: `+50,000đ` (shipper owes)
+   - Negative: `-20,000đ` (admin owes)
+   - Zero: `0đ` (neutral)
+
+### Transaction Amount Display
+7. **Same Color Logic:**
+   - Transaction amount >= 0: Orange (debt increased)
+   - Transaction amount < 0: Green (debt decreased/paid)
+
+8. **Plus Sign:**
+   - Show `+` for positive amounts
+   - No sign for negative (already has `-`)
+
+### Input Unit
+9. **User Input:** Đồng (full)
+10. **Store:** Nghìn đồng (k)
+11. **Conversion:** `Number(payAmount) / 1000`
+
+### OrderId Debug Info
+12. **Purpose:**
+    - Show full orderId in monospace font
+    - Debug info (fontSize 10, color #BBB)
+    - Only show if `item.orderId` exists
+
+13. **Example:**
+    ```
+    Admin thu tiền mặt
+    FULL ID: order_abc123xyz
+    27/01/2026, 10:30:15
+    ```
+
+### Rounding Precision
+14. **JavaScript Float Issue:**
+    - 0.1 + 0.2 = 0.30000000000000004
+
+15. **Solution:**
+    - `Math.round(amount * 1000) / 1000`
+    - Ensure 3 decimal places max
+
+## 🚀 USER JOURNEY
+
+### Admin - Xem lịch sử shipper
+1. Navigate from Admin Finance list → Nhấn vào shipper card
+2. Route: `/admin/shipper-detail-finance?shipperId=5&name=Lê Văn A`
+3. Load transactions của shipper #5
+4. Xem:
+   - Số dư nợ hiện tại: +50,000đ (shipper nợ)
+   - Lịch sử giao dịch:
+     - Giao đơn #123: +15k (debt)
+     - Giao đơn #124: +8k (debt)
+     - Admin thu tiền: -20k (payment)
+     - Giao đơn #125: +10k (debt)
+     - ...
+
+### Admin - Thu tiền từ shipper
+1. Shipper nợ 50k → Balance: +50,000đ (orange)
+2. Shipper đưa 30k tiền mặt cho admin
+3. Admin nhập: 30000 (đơn vị đồng)
+4. Nhấn "THU NỢ"
+5. System:
+   - Convert: 30000 / 1000 = 30 (k)
+   - Flip sign: -30 (vì balance >= 0)
+   - Add transaction: { amount: -30, type: 'PAYMENT', desc: 'Admin thu tiền mặt' }
+6. New balance: 50 + (-30) = 20k (shipper còn nợ 20k)
+7. Alert "Đã cập nhật giao dịch tài chính thành công"
+
+### Admin - Trả tiền cho shipper
+1. Admin nợ shipper 20k → Balance: -20,000đ (green)
+2. Admin trả tiền mặt 10k cho shipper
+3. Admin nhập: 10000
+4. Nhấn "TRẢ TIỀN"
+5. System:
+   - Convert: 10000 / 1000 = 10 (k)
+   - Flip sign: +10 (vì balance < 0)
+   - Add transaction: { amount: +10, type: 'PAYMENT', desc: 'Admin trả tiền bù (Voucher/Ship)' }
+6. New balance: -20 + 10 = -10k (admin còn nợ 10k)
+7. Alert success
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không
+
+**Navigates FROM:**
+- Admin Finance page → Nhấn vào shipper card
+- Params: `{ shipperId, name }`
+
+**Back Navigation:**
+- Back button (header left) → `router.back()`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Operations
+1. **Collection:** `transactions`
+2. **Query:**
+   - `where('userId', '==', Number(shipperId))`
+   - NO orderBy (avoid index error)
+3. **Sort:** JavaScript `.sort()`
+4. **Add:** `addDoc(collection(db, 'transactions'), {...})`
+
+### Transaction Structure
+```js
+{
+  id: string,              // Auto-generated by Firestore
+  userId: number,          // Shipper ID
+  userName: string,        // Shipper name (for display)
+  type: 'DEBT' | 'PAYMENT' | 'REFUND',
+  amount: number,          // Nghìn đồng (k)
+  desc: string,            // Description
+  orderId?: string,        // Order ID (if DEBT type)
+  customerName?: string,   // Customer name (for DEBT)
+  createdAt: string,       // ISO timestamp
+  performedBy: 'system' | 'admin'
+}
+```
+
+### Transaction Types
+5. **DEBT:**
+   - Tạo khi shipper giao đơn COD
+   - amount: Positive (increase debt)
+   - performedBy: 'system'
+
+6. **PAYMENT:**
+   - Tạo khi admin thu/trả tiền
+   - amount: Negative (thu) / Positive (trả)
+   - performedBy: 'admin'
+
+7. **REFUND:**
+   - Tạo khi discount > adminShare
+   - amount: Negative (admin owes)
+   - performedBy: 'system'
+
+### Balance Calculation
+8. **Formula:** `sum(all amounts)`
+9. **Result:**
+   - Positive: Shipper owes admin
+   - Negative: Admin owes shipper
+   - Zero: No debt
+
+### Input Validation
+10. **Check Empty:** `!payAmount`
+11. **Check Numeric:** `isNaN(payAmount)`
+12. **No Negative:** User không cần nhập dấu âm (auto flip)
+
+### Amount Conversion
+13. **User Input:** 30000 đồng
+14. **Divide by 1000:** 30 k
+15. **Flip Sign:** -30 hoặc +30
+16. **Round:** 3 decimals
+17. **Store:** -30 k
+
+### Platform Differences
+18. **Web Alert:** `window.alert(message)`
+19. **Mobile Alert:** `Alert.alert("Title", message)`
+
+### Realtime Update
+20. **onSnapshot:** Auto update khi có transaction mới
+21. **No Manual Refresh:** Data always synced
+
+## 🔍 TRANSACTION EXAMPLES
+
+### Example 1: Shipper giao đơn
+```js
+{
+  userId: 5,
+  userName: "Lê Văn A",
+  type: "DEBT",
+  amount: 15, // Shipper nợ thêm 15k
+  desc: "Đơn COD #order_123",
+  orderId: "order_abc123xyz",
+  customerName: "Nguyễn Văn B",
+  createdAt: "2026-01-27T10:00:00.000Z",
+  performedBy: "system"
+}
+// Balance trước: 50k → Sau: 65k
+```
+
+### Example 2: Admin thu tiền
+```js
+{
+  userId: 5,
+  userName: "Lê Văn A",
+  type: "PAYMENT",
+  amount: -30, // Giảm nợ 30k
+  desc: "Admin thu tiền mặt",
+  createdAt: "2026-01-27T11:00:00.000Z",
+  performedBy: "admin"
+}
+// Balance trước: 65k → Sau: 35k
+```
+
+### Example 3: Admin trả tiền bù
+```js
+{
+  userId: 5,
+  userName: "Lê Văn A",
+  type: "PAYMENT",
+  amount: 10, // Admin trả 10k (balance âm)
+  desc: "Admin trả tiền bù (Voucher/Ship)",
+  createdAt: "2026-01-27T12:00:00.000Z",
+  performedBy: "admin"
+}
+// Balance trước: -20k → Sau: -10k
+```
+
+### Example 4: Refund từ discount
+```js
+{
+  userId: 5,
+  userName: "Lê Văn A",
+  type: "REFUND",
+  amount: -2, // Admin nợ shipper 2k
+  desc: "Bù discount vượt quá adminShare",
+  orderId: "order_def456",
+  createdAt: "2026-01-27T13:00:00.000Z",
+  performedBy: "system"
+}
+// Balance trước: 10k → Sau: 8k
+```
+
+## 🎯 USE CASES
+
+### 1. Shipper nộp tiền cuối ngày
+- Balance: +150k (shipper nợ)
+- Shipper đưa 100k cash
+- Admin nhập 100000 → Thu nợ
+- New balance: +50k
+
+### 2. Shipper đã trả hết nợ, admin còn thiếu
+- Balance: -5k (admin nợ shipper)
+- Admin trả 5k cash
+- Admin nhập 5000 → Trả tiền
+- New balance: 0 (hòa)
+
+### 3. Shipper giao nhiều đơn trong ngày
+- Start balance: 0
+- Đơn 1: +20k
+- Đơn 2: +15k
+- Đơn 3: +10k
+- End balance: +45k
+- Admin thu tiền: -45k
+- Final balance: 0
+
+### 4. Discount lớn, admin phải bù
+- Balance: +30k (shipper nợ)
+- Refund transaction: -35k (discount > adminShare)
+- New balance: -5k (admin nợ shipper)
+- Admin trả tiền: +5k
+- Final balance: 0
+
+## 🚨 EDGE CASES
+
+1. **No Transactions:**
+   - transactions = []
+   - totalBalance = 0
+   - FlatList empty → Show "Chưa có lịch sử"
+
+2. **Empty Input:**
+   - payAmount = ''
+   - Alert "Vui lòng nhập số tiền hợp lệ"
+
+3. **Invalid Input:**
+   - payAmount = 'abc'
+   - isNaN check → Alert error
+
+4. **Zero Balance:**
+   - totalBalance = 0
+   - Button still shows "THU NỢ" (logic >= 0)
+   - Amount flip: -inputVal
+   - After payment: Balance goes negative (admin owes)
+
+5. **Very Large Amount:**
+   - payAmount = 99999999
+   - No validation for max amount
+   - Can create huge debt/credit
+
+6. **Negative Input:**
+   - User nhập -30000
+   - System still flip sign
+   - May cause confusion → Should validate > 0
+
+7. **Float Precision:**
+   - 0.1 + 0.2 = 0.30000000000000004
+   - Rounding fixes this
+
+8. **ShipperId Not Found:**
+   - Invalid shipperId param
+   - Query returns empty
+   - totalBalance = 0, transactions = []
+
+## 📝 SUGGESTED IMPROVEMENTS
+
+### 1. Amount Validation
+```js
+const amount = Number(payAmount);
+if (amount <= 0) {
+  Alert("Số tiền phải lớn hơn 0");
+  return;
+}
+
+const MAX_AMOUNT = 10000000; // 10M
+if (amount > MAX_AMOUNT) {
+  Alert("Số tiền quá lớn");
+  return;
+}
+```
+
+### 2. Confirmation Dialog
+```js
+const balanceAfter = totalBalance + finalAmount;
+const message = `Thu ${(inputVal*1000).toLocaleString()}đ?\nSố dư sau: ${(balanceAfter*1000).toLocaleString()}đ`;
+
+Alert.alert("Xác nhận", message, [
+  { text: "Hủy", style: "cancel" },
+  { text: "Xác nhận", onPress: () => addTransaction() }
+]);
+```
+
+### 3. Transaction Note
+```js
+const [note, setNote] = useState('');
+
+<TextInput 
+  placeholder="Ghi chú (optional)"
+  value={note}
+  onChangeText={setNote}
+/>
+
+// In transaction
+desc: note || (totalBalance >= 0 ? 'Admin thu tiền mặt' : 'Admin trả tiền bù'),
+```
+
+### 4. Receipt Print
+```js
+const printReceipt = () => {
+  const receipt = `
+    PHIẾU THU TIỀN
+    Shipper: ${name}
+    Số tiền: ${(inputVal*1000).toLocaleString()}đ
+    Số dư sau: ${((totalBalance+finalAmount)*1000).toLocaleString()}đ
+    Thời gian: ${new Date().toLocaleString('vi-VN')}
+  `;
+  // Print or share receipt
+};
+```
+
+### 5. Statistics Summary
+```js
+const stats = useMemo(() => {
+  const debts = transactions.filter(t => t.type === 'DEBT');
+  const payments = transactions.filter(t => t.type === 'PAYMENT');
+  
+  return {
+    totalOrders: debts.length,
+    totalDebt: debts.reduce((sum, t) => sum + t.amount, 0),
+    totalPaid: payments.reduce((sum, t) => sum + Math.abs(t.amount), 0)
+  };
+}, [transactions]);
+
+<View>
+  <Text>Tổng đơn: {stats.totalOrders}</Text>
+  <Text>Tổng nợ: {(stats.totalDebt*1000).toLocaleString()}đ</Text>
+  <Text>Đã nộp: {(stats.totalPaid*1000).toLocaleString()}đ</Text>
+</View>
+```
+
+### 6. Date Range Filter
+```js
+const [dateRange, setDateRange] = useState('today');
+
+const filteredTransactions = transactions.filter(t => {
+  const date = new Date(t.createdAt);
+  const today = new Date();
+  
+  switch(dateRange) {
+    case 'today':
+      return date.toDateString() === today.toDateString();
+    case 'week':
+      // Last 7 days
+      return (today - date) < 7 * 24 * 60 * 60 * 1000;
+    // ...
+  }
+});
+```
+
+### 7. Export Excel
+```js
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+
+const exportToExcel = async () => {
+  // Generate CSV or XLSX
+  const csv = transactions.map(t => 
+    `${t.createdAt},${t.desc},${t.amount}`
+  ).join('\n');
+  
+  const path = FileSystem.documentDirectory + 'transactions.csv';
+  await FileSystem.writeAsStringAsync(path, csv);
+  await Sharing.shareAsync(path);
+};
+```
+
+### 8. Search Transactions
+```js
+const [searchQuery, setSearchQuery] = useState('');
+
+const searchedTransactions = transactions.filter(t =>
+  t.desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  t.orderId?.includes(searchQuery)
+);
+```

@@ -1,0 +1,342 @@
+# TÓM TẮT LOGIC TRANG APP/LOGIN.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình đăng nhập của app:
+- Đăng nhập bằng số điện thoại + mật khẩu
+- Quick login buttons cho testing (4 roles)
+- Guest access option
+- Auto redirect nếu đã đăng nhập
+
+## 📊 STATE & DATA
+
+**App Store:**
+```js
+const { 
+  currentUser,           // User đang đăng nhập (null if not logged in)
+  login,                 // Function login(phone, password)
+  initializeGuest        // Function for guest mode
+} = useAppStore();
+```
+
+**Local State:**
+```js
+phone: string             // Số điện thoại (input)
+password: string          // Mật khẩu (input)
+```
+
+**Quick Login Credentials:**
+```js
+ADMIN: {
+  phone: '0931837176',
+  password: 'Kien1234',
+  userId: 205,
+  role: 'admin'
+}
+
+SHIPPER: {
+  phone: '0988276552',
+  password: 'Kien1234',
+  userId: 212,
+  role: 'shipper'
+}
+
+SHOP_OWNER: {
+  phone: '0979934882',
+  password: 'Kien1234',
+  userId: 208,
+  role: 'user' (shop owner)
+}
+
+USER: {
+  phone: '0931837170',
+  password: 'Kien1234',
+  userId: 213,
+  role: 'user'
+}
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Auto Redirect if Logged In
+```js
+if (currentUser) {
+  return <Redirect href="/(tabs)/home" />;
+}
+
+/**
+ * WHY?
+ * - User already logged in
+ * - No need to show login screen
+ * - Redirect to home page
+ */
+```
+
+### 2. Normal Login
+```js
+const handleLogin = async () => {
+  // 1. Validate phone
+  if (!phone || phone.trim().length < 10) {
+    Alert.alert("Lỗi", "Vui lòng nhập số điện thoại hợp lệ (ít nhất 10 số)");
+    return;
+  }
+  
+  // 2. Validate password
+  if (!password || password.trim().length === 0) {
+    Alert.alert("Lỗi", "Vui lòng nhập mật khẩu");
+    return;
+  }
+  
+  // 3. Call login from store
+  try {
+    await login(phone.trim(), password.trim());
+    
+    // 4. Login success → Auto navigate to home (via Redirect component)
+    router.replace('/(tabs)/home');
+    
+  } catch (error) {
+    // 5. Login failed → Show error
+    Alert.alert(
+      "Đăng nhập thất bại", 
+      error.message || "Số điện thoại hoặc mật khẩu không đúng"
+    );
+  }
+};
+```
+
+### 3. Quick Login (Testing)
+```js
+const quickLogin = async (role) => {
+  // Map role to credentials
+  const credentials = {
+    admin: { phone: '0931837176', password: 'Kien1234' },
+    shipper: { phone: '0988276552', password: 'Kien1234' },
+    shopOwner: { phone: '0979934882', password: 'Kien1234' },
+    user: { phone: '0931837170', password: 'Kien1234' }
+  };
+  
+  const cred = credentials[role];
+  
+  try {
+    // Auto fill & login
+    await login(cred.phone, cred.password);
+    router.replace('/(tabs)/home');
+  } catch (error) {
+    Alert.alert("Lỗi", "Quick login thất bại");
+  }
+};
+```
+
+### 4. Guest Access
+```js
+const handleGuestAccess = async () => {
+  try {
+    // Initialize guest user (no phone, no password)
+    await initializeGuest();
+    
+    // Navigate to home
+    router.replace('/(tabs)/home');
+    
+  } catch (error) {
+    Alert.alert("Lỗi", "Không thể vào chế độ khách");
+  }
+}
+- USER: 0931837170
+  ↓
+handleLogin(phone_của_nút, 'Kien1234')
+  ↓
+Tự động đăng nhập với thông tin sẵn
+```
+
+### 4️⃣ **Guest Access (Bỏ qua đăng nhập)**
+```
+Nhấn "Bỏ qua đăng nhập"
+  ↓
+handleGuestAccess() được gọi
+  ↓
+initializeGuest() - Tạo guest user:
+  • ID = timestamp
+  • name, phone, address, password = ""
+  • Lưu vào Firestore
+  • Lưu ID vào AsyncStorage
+  ↓
+router.replace('/(tabs)/home')
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleLogin(customPhone?, customPass?)`
+**Mục đích:** Xử lý đăng nhập (thủ công hoặc quick login)
+
+**Logic:**
+```
+1. Lấy phone/pass từ params HOẶC từ state
+2. Validate: phone.length >= 10
+3. Gọi login() từ store
+4. Nếu success:
+   - router.replace('/(tabs)/home')
+5. Nếu fail:
+   - Alert.alert("Lỗi", result.message)
+```
+
+**Đặc điểm:**
+- Có thể nhận params (cho quick login)
+- Hoặc dùng state (cho manual login)
+- Flexible để phục vụ cả 2 trường hợp
+
+### `handleGuestAccess()`
+**Mục đích:** Tạo guest user và vào app
+
+**Logic:**
+```
+1. await initializeGuest()
+   - Tạo user với password = ""
+   - Lưu vào Firestore + AsyncStorage
+2. router.replace('/(tabs)/home')
+```
+
+**Đặc điểm:**
+- Không cần nhập thông tin gì
+- Tạo user tạm với ID = timestamp
+- Vào app ngay lập tức
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ↓
+ScrollView
+  ├── Image (onboardImage.png)
+  ├── Title: "VIVA MARKET"
+  ├── MyInput (Số điện thoại)
+  ├── MyInput (Mật khẩu - isPass)
+  ├── MyButton (ĐĂNG NHẬP)
+  ├── Quick Login Container
+  │   ├── Title: "Đăng nhập nhanh cho Tester"
+  │   └── 4 nút (2x2 grid - width 48%):
+  │       ├── ADMIN (đỏ)
+  │       ├── SHIPPER (xanh lá)
+  │       ├── CHỦ SHOP (vàng)
+  │       └── USER (xanh dương)
+  └── Link Container
+      ├── "Chưa có tài khoản? Đăng ký ngay" → /register
+      └── "Hoặc Bỏ qua đăng nhập" → handleGuestAccess()
+```
+
+## 🔐 DỮ LIỆU QUICK LOGIN
+
+**Mảng quickLogins (hard-coded):**
+```javascript
+[
+  { label: 'ADMIN', phone: '0931837176', pass: 'Kien1234', color: '#E74C3C' },
+  { label: 'SHIPPER', phone: '0988276552', pass: 'Kien1234', color: '#27AE60' },
+  { label: 'CHỦ SHOP', phone: '0979934882', pass: 'Kien1234', color: '#F1C40F' },
+  { label: 'USER', phone: '0931837170', pass: 'Kien1234', color: '#3498DB' }
+]
+```
+
+**Mục đích:**
+- Cho developer/tester đăng nhập nhanh
+- Không cần nhớ/nhập thông tin
+- Test nhanh các role khác nhau
+
+## ⚙️ VALIDATION
+
+### Validate số điện thoại:
+```javascript
+if (finalPhone.length < 10) {
+  return Alert.alert("Lỗi", "Số điện thoại không hợp lệ");
+}
+```
+
+**Lưu ý:**
+- Chỉ check độ dài >= 10
+- Không check format chi tiết (regex)
+- Đơn giản để dễ test
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+✅ **Auto redirect nếu đã login** - Không cho vào trang login nếu đã có currentUser
+✅ **State mặc định có sẵn** - Phone & password đã điền sẵn để test nhanh
+✅ **3 cách đăng nhập** - Manual, Quick login, Guest access
+✅ **Quick login grid 2x2** - Mỗi nút width 48%, màu khác nhau theo role
+✅ **Không loading state** - Login xong thì redirect ngay, không cần spinner
+✅ **expoToken tự động gửi** - Cho push notification (nếu có)
+
+## 🚀 USER JOURNEY
+
+### **User thường:**
+```
+Mở app → Index → Click "CONTINUE TO APP"
+  ↓
+Không có session → Login
+  ↓
+Nhập SĐT + password → Nhấn "ĐĂNG NHẬP"
+  ↓
+Success → Home
+```
+
+### **Tester:**
+```
+Vào Login
+  ↓
+Click 1 trong 4 nút quick login
+  ↓
+Tự động đăng nhập → Home
+```
+
+### **Guest:**
+```
+Vào Login
+  ↓
+Click "Bỏ qua đăng nhập"
+  ↓
+Tạo guest user → Home
+```
+
+### **User đã login trước:**
+```
+Mở app → Index → Click "CONTINUE TO APP"
+  ↓
+Có session → Home (skip Login)
+```
+
+## 🔗 NAVIGATION
+
+**Từ Login đi đến:**
+- ✅ Home: Sau khi login thành công hoặc guest access
+- ✅ Register: Click link "Đăng ký ngay"
+
+**Vào Login từ:**
+- ✅ Index: Nếu không có session (click "CONTINUE TO APP")
+- ✅ Profile: Nếu guest click "ĐĂNG NHẬP NGAY"
+
+## 💡 LƯU Ý KỸ THUẬT
+
+**Default values cho testing:**
+- Phone mặc định: '0931837170' (USER)
+- Password mặc định: 'Kien1234'
+- Giúp test nhanh không cần nhập
+
+**Quick login flexible:**
+- handleLogin() nhận optional params
+- Nếu không có params → dùng state
+- Nếu có params → dùng params
+- Một function phục vụ cả manual & quick login
+
+**Guest user structure:**
+```javascript
+{
+  id: Date.now(),          // timestamp
+  name: "",                // rỗng
+  phone: "",               // rỗng
+  address: "",             // rỗng
+  password: "",            // rỗng - dùng để check isGuest
+  role: "user",
+  status: "enable",
+  point: 0
+}
+```
+
+===============================================================================
+CẬP NHẬT: 27/01/2026
+===============================================================================

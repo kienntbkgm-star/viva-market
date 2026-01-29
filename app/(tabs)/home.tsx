@@ -43,6 +43,7 @@ interface FoodItem {
     priceNormal: number;
     effectiveStatus?: string;
     isOutOfTime?: boolean;
+    isResidentShopNotReady?: boolean;
     timeStart?: string | number;
     timeEnd?: string | number;
 }
@@ -58,6 +59,7 @@ interface User {
     shopName?: string;
     imgShopSquare?: string;
     address?: string;
+    isResidentShop?: boolean;
 }
 
 interface SystemInfo {
@@ -143,9 +145,26 @@ export default function HomeScreen() {
                     if (currentHour >= end && currentHour < start) isExpired = true;
                 }
                 
-                return { ...item, isOutOfTime: isExpired };
+                // Check if shop is resident and not ready
+                const shopOwner = users.find(u => u.id === item.shopId);
+                const isResidentShopNotReady = shopOwner?.isResidentShop && !shopOwner?.isReady;
+                
+                return { 
+                    ...item, 
+                    isOutOfTime: isExpired,
+                    isResidentShopNotReady: isResidentShopNotReady 
+                };
+            })
+            .sort((a, b) => {
+                // Sắp xếp: món available trước, món disable sau
+                const aDisabled = a.effectiveStatus === 'disable' || a.isOutOfTime || a.isResidentShopNotReady;
+                const bDisabled = b.effectiveStatus === 'disable' || b.isOutOfTime || b.isResidentShopNotReady;
+                
+                if (aDisabled && !bDisabled) return 1;
+                if (!aDisabled && bDisabled) return -1;
+                return 0;
             });
-    }, [foods, searchQuery, selectedType, selectedShop, currentHour]);
+    }, [foods, searchQuery, selectedType, selectedShop, currentHour, users]);
 
     const selectedShopInfo = useMemo((): ShopInfo => {
         if (selectedShop === 'all') {
@@ -156,9 +175,14 @@ export default function HomeScreen() {
     }, [selectedShop, availableShops, foods]);
 
     const renderFoodItem: ListRenderItem<FoodItem> = ({ item }) => {
-        const isDisable = item.effectiveStatus === 'disable';
+        const isDisable = item.effectiveStatus === 'disable' || item.isResidentShopNotReady;
         let statusLabel = "HẾT MÓN";
         if (item.isOutOfTime) statusLabel = "HẾT GIỜ BÁN";
+        if (item.isResidentShopNotReady) statusLabel = "HẾT MÓN";
+
+        // Check if shop is resident shop
+        const shopInfo = users.find(u => u.id === item.shopId);
+        const isResidentShop = shopInfo?.isResidentShop === true;
 
         return (
             <TouchableOpacity
@@ -166,9 +190,12 @@ export default function HomeScreen() {
                 activeOpacity={isDisable ? 1 : 0.7}
                 onPress={() => {
                     if (isDisable) {
-                        const msg = item.isOutOfTime
-                            ? `Món này chỉ bán từ ${item.timeStart || '?'}h đến ${item.timeEnd || '?'}h. Hiện đã hết giờ bán.`
-                            : "Món ăn này hiện đang tạm ngưng phục vụ.";
+                        let msg = "Món ăn này hiện đang tạm ngưng phục vụ.";
+                        if (item.isOutOfTime) {
+                            msg = `Món này chỉ bán từ ${item.timeStart || '?'}h đến ${item.timeEnd || '?'}h. Hiện đã hết giờ bán.`;
+                        } else if (item.isResidentShopNotReady) {
+                            msg = "Shop cư dân chưa mở cửa hôm nay.";
+                        }
                         Platform.OS === 'web' ? window.alert(msg) : Alert.alert("Thông báo", msg);
                         return;
                     }
@@ -185,6 +212,12 @@ export default function HomeScreen() {
                             <Text style={styles.shopBadgeText}>
                                 {availableShops.find(s => s.id === item.shopId)?.name || `Shop ${item.shopId}`}
                             </Text>
+                        </View>
+                    )}
+                    {isResidentShop && (
+                        <View style={styles.residentBadge}>
+                            <Ionicons name="home" size={10} color="#fff" />
+                            <Text style={styles.residentBadgeText}>Shop cư dân</Text>
                         </View>
                     )}
                     {(isDisable || item.isOutOfTime) && (
@@ -451,6 +484,8 @@ const styles = StyleSheet.create({
     cardImage: { width: '100%', height: 130, borderTopLeftRadius: 15, borderTopRightRadius: 15 },
     shopBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
     shopBadgeText: { color: '#fff', fontSize: 9, fontWeight: '500' },
+    residentBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: '#27AE60', flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6 },
+    residentBadgeText: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
     cardInfo: { padding: 10 },
     cardName: { fontWeight: 'bold', fontSize: 14, color: '#333' },
     priceContainer: { flexDirection: 'row', alignItems: 'baseline', marginTop: 4, gap: 5 },

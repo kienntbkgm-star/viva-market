@@ -1,0 +1,629 @@
+# TÓM TẮT LOGIC TRANG ADMIN/SERVICE-ORDER-DETAIL.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình chi tiết đơn dịch vụ (admin view):
+- Xem thông tin yêu cầu dịch vụ từ khách hàng
+- Hiển thị khách hàng, dịch vụ yêu cầu, ghi chú
+- Xem nhật ký xử lý
+- Admin tiếp nhận (pending → processing)
+- Admin hoàn thành (processing → completed)
+- Admin hủy yêu cầu (→ cancelled)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `serviceOrders`: Danh sách đơn dịch vụ
+- `services`: Danh sách dịch vụ (để lấy image)
+- `currentUser`: User đang login (check role admin)
+
+**Route Params:**
+- `orderId`: ID của đơn dịch vụ cần xem
+
+**Computed:**
+```js
+const order = useMemo(() => 
+  serviceOrders.find(o => 
+    String(o.orderId) === String(orderId) || 
+    String(o.id) === String(orderId)
+  )
+, [orderId, serviceOrders]);
+
+const serviceInfo = useMemo(() => {
+  if (order?.serviceId) {
+    return services.find(s => String(s.id) === String(order.serviceId));
+  }
+  return null;
+}, [order, services]);
+
+const isAdmin = currentUser?.role === 'admin';
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load Order & Service Info
+```js
+// Find order
+const order = serviceOrders.find(o => o.orderId === orderId);
+
+// Find service để lấy ảnh
+const serviceInfo = services.find(s => s.id === order.serviceId);
+```
+
+### 2. Update Status
+```js
+const updateStatus = async (newStatus, note) => {
+  try {
+    const orderRef = doc(db, 'serviceOrders', order.id || order.orderId);
+    
+    await updateDoc(orderRef, {
+      status: newStatus,
+      logs: arrayUnion({
+        content: note,
+        status: newStatus,
+        time: new Date().toISOString()
+      })
+    });
+    
+    const msg = "Đã cập nhật trạng thái đơn dịch vụ";
+    if (Platform.OS === 'web') window.alert(msg);
+    else Alert.alert("Thành công", msg);
+  } catch (error) {
+    Alert.alert("Lỗi", "Không thể cập nhật đơn hàng");
+  }
+};
+```
+
+### 3. Admin Actions
+**Tiếp nhận (pending → processing):**
+```js
+updateStatus('processing', 'Admin đã tiếp nhận yêu cầu');
+```
+
+**Hoàn thành (processing → completed):**
+```js
+updateStatus('completed', 'Dịch vụ đã hoàn thành');
+```
+
+**Hủy yêu cầu (→ cancelled):**
+```js
+updateStatus('cancelled', 'Admin đã hủy yêu cầu');
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### Platform-Specific Alert
+```js
+const showAlert = (title, message, onPressOk) => {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}: ${message}`)) onPressOk();
+  } else {
+    Alert.alert(title, message, [
+      { text: "Hủy", style: "cancel" },
+      { text: "Đồng ý", onPress: onPressOk }
+    ]);
+  }
+};
+```
+
+### Price Display
+```js
+// Service price (không cần nhân 1000, đã là đồng)
+(order.price || 0).toLocaleString() + 'đ'
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Chi tiết Dịch vụ"
+  │   └─ Spacer
+  │
+  └─ ScrollView
+      ├─ Card: THÔNG TIN CHUNG
+      │   ├─ Order ID + Status Label
+      │   └─ Created Time
+      │
+      ├─ Card: THÔNG TIN KHÁCH HÀNG
+      │   ├─ Icon + Name
+      │   ├─ Icon + Phone
+      │   └─ Icon + Address
+      │
+      ├─ Card: DỊCH VỤ YÊU CẦU
+      │   ├─ Service Item
+      │   │   ├─ Image (60x60)
+      │   │   ├─ Service Name
+      │   │   ├─ Shop Name (primary color)
+      │   │   └─ Note (italic)
+      │   ├─ Divider
+      │   └─ TỔNG PHÍ DỰ KIẾN (bold, primary)
+      │
+      ├─ Card: NHẬT KÝ XỬ LÝ
+      │   └─ Log Items (map)
+      │       ├─ Dot (primary color)
+      │       ├─ Content
+      │       └─ Time
+      │
+      └─ Admin Actions (nếu isAdmin && status không phải completed/cancelled)
+          ├─ TIẾP NHẬN button (nếu status = pending, màu xanh #27AE60)
+          ├─ HOÀN THÀNH button (nếu status = processing, màu primary)
+          └─ HỦY YÊU CẦU button (border đỏ)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Service Order vs Food Order
+1. **Khác biệt cơ bản:**
+   - Food Order: Danh sách items, nhiều món
+   - Service Order: 1 dịch vụ duy nhất
+   - Food Order: Có shipper giao hàng
+   - Service Order: Shop trực tiếp thực hiện
+
+2. **Price:**
+   - Food: Tổng tiền items + ship - discount
+   - Service: Price cố định (dự kiến)
+   - Service không có ship fee, discount
+
+### Service Info Display
+3. **Image:**
+   - Load từ `serviceInfo.image` (URL)
+   - Fallback: Placeholder "https://via.placeholder.com/150"
+   - Size: 60x60, borderRadius 8
+
+4. **Service Name:**
+   - `order.serviceName` (snapshot tại thời điểm đặt)
+   - Không dùng `serviceInfo.name` (có thể thay đổi)
+
+5. **Shop Name:**
+   - `order.shopName`
+   - Color: primary
+   - Hiển thị đơn vị thực hiện dịch vụ
+
+6. **Note:**
+   - `order.note` (ghi chú từ customer)
+   - "Không có" nếu rỗng
+   - Italic, gray color
+
+### Status Flow
+7. **Service Order States:**
+   ```
+   pending → processing → completed
+              ↓
+           cancelled
+   ```
+
+8. **Pending:**
+   - Yêu cầu mới, chờ admin tiếp nhận
+   - Action: TIẾP NHẬN
+
+9. **Processing:**
+   - Admin đã tiếp nhận, đang xử lý
+   - Action: HOÀN THÀNH hoặc HỦY
+
+10. **Completed:**
+    - Dịch vụ đã hoàn thành
+    - No more actions
+
+11. **Cancelled:**
+    - Yêu cầu bị hủy
+    - No more actions
+
+### Admin Actions Visibility
+12. **Show Actions If:**
+    - `isAdmin = true` AND
+    - `status !== 'completed'` AND
+    - `status !== 'cancelled'`
+
+13. **Button Logic:**
+    - Pending: Show "TIẾP NHẬN" + "HỦY YÊU CẦU"
+    - Processing: Show "HOÀN THÀNH" + "HỦY YÊU CẦU"
+    - Completed/Cancelled: Hide all buttons
+
+### Price Field
+14. **Field Name:** `price` (not `finalTotal`)
+15. **Unit:** Đồng (full, không phải nghìn)
+16. **Display:** `(order.price || 0).toLocaleString() + 'đ'`
+17. **Label:** "TỔNG PHÍ DỰ KIẾN" (estimated, not final)
+
+### Logs Display
+18. **Same as Food Order:**
+    - Dot + Content + Time
+    - Chronological order
+
+## 🚀 USER JOURNEY
+
+### Customer - Đặt dịch vụ (not in this file)
+1. Customer vào trang Services
+2. Chọn dịch vụ: "Thay lõi lọc nước"
+3. Nhập ghi chú: "Máy lọc 10 lõi, cần thay cả 10"
+4. Nhấn "Đặt dịch vụ"
+5. Tạo serviceOrder với status='pending'
+
+### Admin - Tiếp nhận yêu cầu
+1. Navigate to `/admin/service-order-detail?orderId=123`
+2. Load order data (status = 'pending')
+3. Xem thông tin:
+   - Customer: Tên, SĐT, Địa chỉ
+   - Dịch vụ: Thay lõi lọc nước
+   - Ghi chú: "Máy lọc 10 lõi, cần thay cả 10"
+   - Giá dự kiến: 50,000đ
+4. Nhấn "TIẾP NHẬN"
+5. Confirm → updateStatus('processing', 'Admin đã tiếp nhận yêu cầu')
+6. Status → 'processing'
+7. Log mới được thêm
+
+### Admin - Hoàn thành dịch vụ
+1. Shop đã thực hiện xong dịch vụ
+2. Admin vào order detail (status = 'processing')
+3. Nhấn "HOÀN THÀNH"
+4. Confirm → updateStatus('completed', 'Dịch vụ đã hoàn thành')
+5. Status → 'completed'
+6. Log mới được thêm
+7. Admin actions hidden (completed)
+
+### Admin - Hủy yêu cầu
+1. Customer hủy hoặc không thể thực hiện
+2. Admin nhấn "HỦY YÊU CẦU"
+3. Confirm → updateStatus('cancelled', 'Admin đã hủy yêu cầu')
+4. Status → 'cancelled'
+5. Admin actions hidden
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không
+
+**Navigates FROM:**
+- Admin Orders page (service orders tab) → Nhấn vào order card
+
+**Back Navigation:**
+- Back button (header left) → `router.back()`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Operations
+1. **Collection:** `serviceOrders`
+2. **Document ID:** `order.id` hoặc `order.orderId`
+3. **Update:** `updateDoc(orderRef, {...})`
+4. **ArrayUnion:** Add log without overwriting
+
+### Service Order Structure
+```js
+{
+  id: string,
+  orderId: string,           // Same as id
+  userId: number,
+  userName: string,
+  userPhone: string,
+  userAddress: string,       // hoặc address
+  serviceId: number,
+  serviceName: string,       // Snapshot at order time
+  shopName: string,          // Shop thực hiện dịch vụ
+  note: string,              // Customer note
+  price: number,             // Đồng (full, not thousands)
+  status: 'pending' | 'processing' | 'completed' | 'cancelled',
+  logs: Array<{
+    content: string,
+    status: string,
+    time: string
+  }>,
+  createdAt: string          // ISO timestamp
+}
+```
+
+### Service Structure (Reference)
+```js
+{
+  id: number,
+  name: string,
+  priceNormal: number,
+  pricePromo: number,
+  moneyShare: number,        // % cho Admin
+  image: string,             // Single image URL
+  status: 'enable' | 'disable',
+  index: number,
+  shopId: number,            // Shop thực hiện
+  note: string,
+  log: []
+}
+```
+
+### Address Field
+5. **Flexible Naming:**
+   - `order.userAddress` OR `order.address`
+   - Check cả 2 fields
+
+### UseMemo Optimization
+6. **Order Lookup:**
+   - useMemo với deps: [orderId, serviceOrders]
+
+7. **Service Lookup:**
+   - useMemo với deps: [order, services]
+   - Chỉ lookup nếu order tồn tại
+
+### Status Management
+8. **No Reset Function:**
+   - Khác food order (không có reset)
+   - Service order không cần reset về pending
+
+9. **Linear Flow:**
+   - Pending → Processing → Completed (one way)
+   - Hoặc: Pending/Processing → Cancelled
+
+### Platform Differences
+10. **Web Alert:** `window.confirm()`
+11. **Mobile Alert:** `Alert.alert()`
+
+### Price Display
+12. **No Thousands:**
+    - Service price là đồng (full)
+    - Food price là nghìn (k)
+    - VD: Service 50000, Food 50
+
+13. **Fallback:**
+    - `order.price || 0` (nếu thiếu price)
+
+### Error Handling
+14. **Order Not Found:**
+    - Show error view với centered text
+
+15. **Service Not Found:**
+    - serviceInfo = null
+    - Use placeholder image
+    - serviceName vẫn hiển thị từ order
+
+### ScrollView
+16. **contentContainerStyle:** `{ padding: 15 }`
+
+## 🔍 LOG EXAMPLES
+
+### Service Order Timeline
+```js
+[
+  {
+    content: "Yêu cầu dịch vụ đã được tạo",
+    status: "pending",
+    time: "2026-01-27T10:00:00.000Z"
+  },
+  {
+    content: "Admin đã tiếp nhận yêu cầu",
+    status: "processing",
+    time: "2026-01-27T10:30:00.000Z"
+  },
+  {
+    content: "Dịch vụ đã hoàn thành",
+    status: "completed",
+    time: "2026-01-27T14:00:00.000Z"
+  }
+]
+```
+
+### Cancelled Timeline
+```js
+[
+  {
+    content: "Yêu cầu dịch vụ đã được tạo",
+    status: "pending",
+    time: "2026-01-27T10:00:00.000Z"
+  },
+  {
+    content: "Admin đã hủy yêu cầu",
+    status: "cancelled",
+    time: "2026-01-27T10:15:00.000Z"
+  }
+]
+```
+
+## 🎯 USE CASES
+
+### 1. Thay lõi lọc nước
+```js
+{
+  serviceName: "Thay lõi lọc nước",
+  userName: "Nguyễn Văn A",
+  userPhone: "0901234567",
+  userAddress: "123 Đường ABC, Q1, TP.HCM",
+  shopName: "Dịch vụ nước sạch XYZ",
+  note: "Máy lọc 10 lõi, cần thay tất cả",
+  price: 500000, // 500k
+  status: "pending"
+}
+```
+
+### 2. Sửa máy giặt
+```js
+{
+  serviceName: "Sửa máy giặt",
+  userName: "Trần Thị B",
+  userPhone: "0902345678",
+  userAddress: "456 Đường DEF, Q2, TP.HCM",
+  shopName: "Điện lạnh Minh Tâm",
+  note: "Máy không vắt, cần kiểm tra",
+  price: 300000, // 300k
+  status: "processing"
+}
+```
+
+### 3. Vệ sinh máy lạnh
+```js
+{
+  serviceName: "Vệ sinh máy lạnh",
+  userName: "Lê Văn C",
+  userPhone: "0903456789",
+  userAddress: "789 Đường GHI, Q3, TP.HCM",
+  shopName: "Điện lạnh Minh Tâm",
+  note: "Máy lạnh 2HP, cần vệ sinh sâu",
+  price: 800000, // 800k
+  status: "completed"
+}
+```
+
+## 🚨 EDGE CASES
+
+1. **Order Not Found:**
+   - orderId không tồn tại
+   - Show error view
+
+2. **Service Not Found:**
+   - serviceId không tồn tại trong services collection
+   - serviceInfo = null
+   - Use placeholder image
+   - serviceName từ order vẫn hiển thị
+
+3. **No Note:**
+   - note = '' hoặc undefined
+   - Display: "Không có"
+
+4. **Completed/Cancelled:**
+   - Admin buttons hidden
+   - Cannot update status anymore
+
+5. **Web vs Mobile:**
+   - Alert handling khác nhau
+   - window.confirm vs Alert.alert
+
+6. **Address Field:**
+   - Có thể là `userAddress` hoặc `address`
+   - Check cả 2 fields
+
+7. **Price = 0:**
+   - Display "0đ"
+   - Valid use case (free service)
+
+8. **Empty Logs:**
+   - Order mới, logs = []
+   - Section vẫn hiển thị (không có items)
+
+## 📝 SO SÁNH VỚI ORDER-DETAIL.TSX
+
+| Feature | Food Order Detail | Service Order Detail |
+|---------|-------------------|----------------------|
+| **Collection** | foodOrders | serviceOrders |
+| **Items** | Multiple items array | Single service |
+| **Shipper** | Yes, with info card | No shipper |
+| **Price** | Thousands (k) | Full (đồng) |
+| **Ship Fee** | Yes (baseShip + extraStepFee) | No ship fee |
+| **Discount** | Yes (promo code) | No discount |
+| **Admin Actions** | Reset + Cancel | Accept + Complete + Cancel |
+| **Status Flow** | pending → processing → completed | Same |
+| **Reset Function** | Yes (remove shipper) | No reset |
+| **Price Display** | `*1000` then format | Direct format |
+| **Image** | From items array | From services collection |
+
+## 💡 SUGGESTED IMPROVEMENTS
+
+### 1. Service Image Preview
+```js
+{serviceInfo?.image && (
+  <Image 
+    source={{ uri: serviceInfo.image }} 
+    style={styles.serviceImgLarge}
+    resizeMode="cover"
+  />
+)}
+```
+
+### 2. MoneyShare Display
+```js
+// From serviceInfo
+const adminShare = serviceInfo 
+  ? (order.price * serviceInfo.moneyShare / 100) 
+  : 0;
+const shopShare = order.price - adminShare;
+
+<Text>Admin nhận: {adminShare.toLocaleString()}đ ({serviceInfo?.moneyShare}%)</Text>
+<Text>Shop nhận: {shopShare.toLocaleString()}đ</Text>
+```
+
+### 3. Call Customer
+```js
+<TouchableOpacity onPress={() => Linking.openURL(`tel:${order.userPhone}`)}>
+  <Ionicons name="call" size={18} color="#4CAF50" />
+</TouchableOpacity>
+```
+
+### 4. Status Badge Color
+```js
+const statusColors = {
+  pending: '#FFA726',
+  processing: '#42A5F5',
+  completed: '#66BB6A',
+  cancelled: '#EF5350'
+};
+
+<View style={[styles.statusBadge, { backgroundColor: statusColors[order.status] }]}>
+  <Text>{order.status.toUpperCase()}</Text>
+</View>
+```
+
+### 5. Copy Order ID
+```js
+<TouchableOpacity onPress={() => Clipboard.setString(order.orderId)}>
+  <Text>#{order.orderId} (nhấn để copy)</Text>
+</TouchableOpacity>
+```
+
+### 6. Estimated Completion Time
+```js
+// Nếu có field estimatedDuration trong service
+const completionTime = new Date(
+  new Date(order.createdAt).getTime() + 
+  serviceInfo.estimatedDuration * 60 * 60 * 1000
+);
+
+<Text>Dự kiến hoàn thành: {completionTime.toLocaleString('vi-VN')}</Text>
+```
+
+### 7. Admin Note Field
+```js
+// Allow admin to add note when updating status
+const [adminNote, setAdminNote] = useState('');
+
+<TextInput 
+  placeholder="Ghi chú admin (optional)"
+  value={adminNote}
+  onChangeText={setAdminNote}
+/>
+
+// When update
+updateStatus('processing', adminNote || 'Admin đã tiếp nhận yêu cầu');
+```
+
+### 8. Payment Status
+```js
+// Add payment tracking
+{
+  paymentStatus: 'unpaid' | 'paid',
+  paymentMethod: 'cash' | 'card' | 'transfer'
+}
+
+<Text>Thanh toán: {order.paymentStatus === 'paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}</Text>
+```
+
+### 9. Before/After Photos
+```js
+// Allow shop to upload photos
+{
+  beforePhotos: string[],
+  afterPhotos: string[]
+}
+
+<View>
+  <Text>Trước khi sửa:</Text>
+  {order.beforePhotos?.map(url => <Image source={{uri: url}} />)}
+</View>
+```
+
+### 10. Customer Rating
+```js
+// After completed, allow customer to rate
+{
+  rating: number, // 1-5 stars
+  review: string
+}
+
+<View>
+  <Text>Đánh giá: {order.rating} ⭐</Text>
+  <Text>{order.review}</Text>
+</View>
+```

@@ -1,0 +1,226 @@
+# TÓM TẮT LOGIC TRANG ADMIN/PROMOS.TSX
+
+## 🎯 MỤC ĐÍCH
+Quản lý danh sách mã khuyến mãi:
+- Hiển thị tất cả promos từ Firestore
+- Bật/tắt trạng thái mã (enable: true/false)
+- Tính toán ngày hết hạn dựa trên `created` + `durationDays`
+- **XUẤT Excel** (Export) - Header chuẩn DB
+- **NHẬP Excel** (Import) - Header chuẩn DB
+- Navigate đến edit-promo để chỉnh sửa chi tiết
+
+## 📊 STATE & DATA
+
+**Store:**
+- `promos`: Danh sách khuyến mãi từ collection `promos`
+
+**Local State:**
+- `isProcessing`: Trạng thái đang xử lý import/export
+
+**Excel Structure (Header chuẩn DB):**
+```
+id, code, value, limit, used, maxPerUser, durationDays, created, enable, usedBy
+```
+
+**Promo Fields:**
+- `code`: Mã giảm giá (VD: "SUMMER2024")
+- `value`: Giá trị giảm (%, hoặc fixed)
+- `limit`: Tổng số lượt phát hành
+- `used`: Số lượt đã dùng
+- `maxPerUser`: Tối đa mỗi user dùng bao nhiêu lần
+- `durationDays`: Số ngày hiệu lực (từ ngày created)
+- `created`: Ngày tạo (ISO String)
+- `enable`: Trạng thái bật/tắt (boolean)
+- `usedBy`: Array chứa userId đã dùng
+
+## 🔄 LUỒNG THỰC THI
+
+### Display Flow
+1. Load `promos` từ store
+2. Tính toán expiry date cho từng promo:
+   ```js
+   const expiryDate = new Date(created.getTime() + durationDays * 24 * 60 * 60 * 1000);
+   const isExpired = expiryDate < new Date();
+   ```
+3. Hiển thị FlatList với promo card
+4. Card có màu khác nếu expired hoặc disabled
+
+### Toggle Enable
+1. Nhấn Switch
+2. Gọi `handleTogglePromo(id, currentEnable)`
+3. Toggle `true ↔ false`
+4. Update Firestore `promos/{id}` → `enable`
+
+### Export Excel
+1. Nhấn nút Export
+2. Convert `usedBy` array → String (ngăn cách phẩy)
+3. Map tất cả fields vào Excel
+4. Download file: `DB_Promos_{timestamp}.xlsx`
+
+### Import Excel
+1. Nhấn nút Import
+2. Chọn file
+3. Parse usedBy string → Array:
+   ```js
+   usedByList = row["usedBy"].toString().split(',').map(s => s.trim()).filter(Boolean);
+   ```
+4. Batch write vào Firestore
+5. Alert success
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleTogglePromo(id, currentStatus)`
+```js
+await updateDoc(doc(db, 'promos', id.toString()), { enable: !currentStatus });
+```
+
+### Logic tính expiry date
+```js
+const createdDate = new Date(item.created);
+const expiryDate = new Date(createdDate.getTime() + item.durationDays * 24 * 60 * 60 * 1000);
+const isExpired = expiryDate < new Date();
+```
+
+### `handleExportExcel()`
+```js
+const dataToExport = promos.map(item => {
+  const usedByString = (item.usedBy || []).join(', ');
+  
+  return {
+    id: item.id,
+    code: item.code,
+    value: item.value,
+    limit: item.limit,
+    used: item.used,
+    maxPerUser: item.maxPerUser,
+    durationDays: item.durationDays,
+    created: item.created,
+    enable: item.enable,
+    usedBy: usedByString
+  };
+});
+```
+
+### `handleImportExcel()`
+```js
+// Parse usedBy: "1, 2, 3" → [1, 2, 3]
+let usedByList = [];
+if (row["usedBy"]) {
+  usedByList = row["usedBy"].toString().split(',').map(s => s.trim()).filter(Boolean);
+  usedByList = usedByList.map(u => isNaN(Number(u)) ? u : Number(u));
+}
+
+const payload = {
+  id: docId,
+  code: row["code"] || `KM${Date.now()}`,
+  value: Number(row["value"]) || 0,
+  limit: Number(row["limit"]) || 100,
+  used: Number(row["used"]) || 0,
+  maxPerUser: Number(row["maxPerUser"]) || 1,
+  durationDays: Number(row["durationDays"]) || 30,
+  created: row["created"] || new Date().toISOString(),
+  enable: row["enable"] === false ? false : true,
+  usedBy: usedByList
+};
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Quản lý Khuyến mãi"
+  │   └─ Button Group
+  │       ├─ Import (#2980B9)
+  │       ├─ Export (#27AE60)
+  │       └─ Add (primary)
+  │
+  └─ FlatList (Promo Cards)
+      └─ renderPromoItem: Card
+          ├─ Icon: ticket-percent
+          ├─ Info
+          │   ├─ Row: CODE + ID + Switch
+          │   ├─ Text: "X lượt dùng còn lại"
+          │   └─ Row: "Giảm X%" + Expiry Text
+          │
+          └─ Style: Disabled/Expired có opacity 0.6
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Expiry Calculation:** `created + durationDays` → expiryDate
+2. **isExpired Check:** `expiryDate < new Date()`
+3. **usedBy Array:** Parse string "1, 2, 3" ↔ Array [1, 2, 3]
+4. **enable Boolean:** true/false (không phải enable/disable string)
+5. **Remaining Uses:** `limit - used`
+6. **Auto Code:** Nếu thiếu code → `KM${Date.now()}`
+7. **Default Values:**
+   - limit: 100
+   - maxPerUser: 1
+   - durationDays: 30
+   - enable: true (nếu không có)
+8. **Expired Color:** #E74C3C (đỏ) + fontWeight bold
+9. **Card Opacity:** 0.6 nếu disabled hoặc expired
+10. **Icon Color:** primary nếu enabled, #999 nếu disabled
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào Admin Promos
+2. Xem danh sách mã KM (có expiry date)
+3. **Export:** Download Excel để backup/edit
+4. **Edit Excel:** Thêm mã mới, sửa value, durationDays
+5. **Import:** Nhập lại vào hệ thống
+6. **Toggle:** Bật/tắt mã
+7. **Edit Detail:** Nhấn card → Edit-promo page
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/admin/edit-promo` (nhấn card hoặc Add)
+
+**Navigates FROM:**
+- Admin dashboard (hoặc menu)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **created Field:** ISO String (VD: "2024-01-27T10:00:00.000Z")
+2. **durationDays:** Number of days from created date
+3. **expiryDate Calculation:**
+   ```js
+   new Date(createdDate.getTime() + durationDays * 24 * 60 * 60 * 1000)
+   ```
+4. **usedBy Format:**
+   - Export: Array → String "1, 2, 3"
+   - Import: String → Array [1, 2, 3]
+5. **ID Type:** String hoặc Number, convert khi cần
+6. **Fallback Code:** `KM${Date.now()}` nếu thiếu
+7. **enable vs status:** Promos dùng `enable` (boolean), không phải `status` (string)
+8. **maxPerUser:** Giới hạn số lần 1 user dùng mã
+9. **limit vs used:** 
+   - limit: Tổng số lượt
+   - used: Đã dùng bao nhiêu lượt
+   - Còn lại: `limit - used`
+10. **Expiry Display:**
+    - Expired: "ĐÃ HẾT HẠN" (màu đỏ)
+    - Not expired: "Hết hạn: DD/MM/YYYY"
+11. **Switch Value:** `item.enable === true` (check boolean)
+12. **Card Icon:** MaterialCommunityIcons ticket-percent
+13. **ID Display:** `#{item.id}` inline với code
+14. **Enable Default:** `true` nếu không có trong Excel
+15. **Success Message:** Alert số mã đã import
+
+## 🔍 SO SÁNH VỚI PRODUCTS/SERVICES
+
+**Giống:**
+- Cùng pattern Import/Export
+- Cùng Toggle switch
+- Cùng navigate edit page
+
+**Khác:**
+- Promos: enable boolean (not status string)
+- Promos: Có logic expiry date
+- Promos: Có usedBy array
+- Promos: Hiển thị "lượt dùng còn lại"
+- Promos: Icon ticket-percent đặc biệt

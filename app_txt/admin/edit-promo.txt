@@ -1,0 +1,586 @@
+# TÓM TẮT LOGIC TRANG ADMIN/EDIT-PROMO.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình thêm/sửa mã giảm giá (promo code):
+- Tạo mã khuyến mãi mới hoặc cập nhật mã có sẵn
+- Cấu hình giá trị giảm (%), giới hạn sử dụng
+- Thiết lập thời hạn (durationDays)
+- Theo dõi người dùng đã sử dụng (usedBy array)
+- Hiển thị thông tin users đã dùng mã
+
+## 📊 STATE & DATA
+
+**Store:**
+- `promos`: Danh sách mã giảm giá (load để edit)
+- `users`: Danh sách users (để hiển thị usedBy info)
+
+**Route Params:**
+- `id`: ID promo (nếu edit), undefined nếu tạo mới
+
+**Local State:**
+```js
+loading: boolean
+formData: {
+  code: string,           // Mã giảm giá (VD: "FREESHIP02")
+  value: string,          // % giảm giá (VD: "10")
+  limit: string,          // Tổng lượt dùng (VD: "100")
+  maxPerUser: string,     // Lượt dùng/người (VD: "1")
+  durationDays: string,   // Số ngày hiệu lực (VD: "30")
+  enable: boolean,        // Trạng thái kích hoạt
+  used: number,           // Số lượt đã dùng (readonly)
+  usedBy: number[],       // Array userId đã dùng (readonly)
+  created: string         // ISO timestamp (readonly)
+}
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load Data (Edit Mode)
+```js
+useEffect(() => {
+  if (id && promos) {
+    const promo = promos.find(p => p.id === id);
+    if (promo) {
+      setFormData({
+        ...promo,
+        value: promo.value.toString(),
+        limit: promo.limit.toString(),
+        maxPerUser: promo.maxPerUser.toString(),
+        durationDays: promo.durationDays.toString()
+      });
+    }
+  }
+}, [id, promos]);
+```
+
+### 2. Save to Firestore
+```js
+const handleSave = async () => {
+  // Validation
+  if (!formData.code || !formData.value || !formData.limit) {
+    Alert.alert("Lỗi", "Vui lòng nhập Mã, Giá trị và Giới hạn");
+    return;
+  }
+  
+  setLoading(true);
+  
+  try {
+    const promoId = id || Date.now().toString();
+    const promoRef = doc(db, 'promos', promoId);
+    
+    const finalData = {
+      ...formData,
+      id: promoId,
+      code: formData.code.toUpperCase().trim(), // Auto uppercase
+      value: Number(formData.value),
+      limit: Number(formData.limit),
+      maxPerUser: Number(formData.maxPerUser),
+      durationDays: Number(formData.durationDays),
+      enable: Boolean(formData.enable),
+      created: formData.created,
+      used: Number(formData.used || 0),
+      usedBy: formData.usedBy || []
+    };
+    
+    if (id) {
+      await updateDoc(promoRef, finalData);
+    } else {
+      await setDoc(promoRef, finalData);
+    }
+    
+    Alert.alert("Thành công", "Đã lưu mã khuyến mãi");
+    router.back();
+  } catch (error) {
+    Alert.alert("Lỗi", "Không thể lưu dữ liệu vào Firebase");
+  } finally {
+    setLoading(false);
+  }
+};
+```
+
+### 3. Display UsedBy Users
+```js
+const getUserInfo = (userId) => {
+  return users.find(u => String(u.id) === String(userId));
+};
+
+// Render
+{formData.usedBy.map((userId, index) => {
+  const user = getUserInfo(userId);
+  return (
+    <View key={index} style={styles.userItem}>
+      <View style={styles.userAvatar}>
+        <Text>{user?.name?.charAt(0) || '?'}</Text>
+      </View>
+      <View>
+        <Text>{user?.name || `User ID: ${userId}`}</Text>
+        <Text>{user?.phone || 'Không có SĐT'}</Text>
+      </View>
+    </View>
+  );
+})}
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### Auto Uppercase Code
+```js
+// Khi save → Auto convert to uppercase
+code: formData.code.toUpperCase().trim()
+
+// Input field
+autoCapitalize="characters" // User gõ tự động uppercase
+```
+
+### Expiry Calculation
+```js
+// Backend logic (not in this file, but related)
+const created = new Date(promo.created);
+const expiry = new Date(created.getTime() + promo.durationDays * 24 * 60 * 60 * 1000);
+const isExpired = Date.now() > expiry.getTime();
+```
+
+### UsedBy Tracking
+```js
+// Khi user dùng mã (logic ở cart/checkout)
+await updateDoc(promoRef, {
+  used: increment(1),
+  usedBy: arrayUnion(userId)
+});
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Cập nhật mã" / "Tạo mã mới"
+  │   │   └─ ID Subtitle (nếu edit)
+  │   └─ Save Button (với loading state)
+  │
+  └─ KeyboardAvoidingView
+      └─ ScrollView (Form Container)
+          ├─ Mã giảm giá (Code) (TextInput, autoCapitalize)
+          ├─ Row 1:
+          │   ├─ Giá trị giảm (%)
+          │   └─ Tổng lượt dùng (Limit)
+          ├─ Row 2:
+          │   ├─ Số ngày hiệu lực (durationDays)
+          │   └─ Lượt dùng/Người (maxPerUser)
+          ├─ Trạng thái kích hoạt (Switch enable)
+          ├─ Người dùng đã sử dụng (usedBy Section)
+          │   └─ User List
+          │       └─ User Item (map)
+          │           ├─ Avatar (chữ cái đầu)
+          │           ├─ Name
+          │           └─ Phone
+          └─ Ngày tạo (Readonly text)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Promo Code Format
+1. **Auto Uppercase:**
+   - User nhập "freeship02" → Save thành "FREESHIP02"
+   - `autoCapitalize="characters"` trong TextInput
+
+2. **Trim Whitespace:**
+   - User nhập " FREESHIP02 " → Save thành "FREESHIP02"
+
+### Expiry Logic
+3. **Duration Days:**
+   - Số ngày hiệu lực kể từ ngày tạo
+   - VD: created = 2026-01-01, durationDays = 30
+   - → Expiry = 2026-01-31
+
+4. **Enable vs Expired:**
+   - `enable = false`: Admin tắt mã
+   - `isExpired = true`: Mã hết hạn (backend check)
+   - Cả 2 điều kiện đều làm mã không dùng được
+
+### Usage Tracking
+5. **Used Count:**
+   - Increment mỗi khi user apply mã
+   - Readonly trong edit form (không cho admin sửa)
+
+6. **UsedBy Array:**
+   - Lưu userId của người đã dùng
+   - Dùng để:
+     - Hiển thị danh sách users đã dùng
+     - Check maxPerUser (1 user dùng bao nhiêu lần)
+
+7. **Limit Check:**
+   - `used >= limit` → Mã hết lượt
+   - Backend check khi apply
+
+### User Display
+8. **Avatar:**
+   - Chữ cái đầu tên user
+   - Background: #F2F2F2
+   - Text color: primary
+
+9. **Fallback:**
+   - Name không có → Hiển thị "User ID: [userId]"
+   - Phone không có → "Không có SĐT"
+   - Avatar không có name → "?"
+
+10. **Empty State:**
+    - `usedBy.length === 0` → "Chưa có người dùng nào sử dụng mã này."
+    - Style: italic, color #BBB
+
+### Created Timestamp
+11. **Display:**
+    - Format: `new Date(formData.created).toLocaleString('vi-VN')`
+    - VD: "27/01/2026, 10:30:15"
+    - Color: #BBB, fontSize: 11
+
+12. **Create Mode:**
+    - Default: `new Date().toISOString()`
+
+## 🚀 USER JOURNEY
+
+### Admin - Tạo mã mới
+1. Navigate to `/admin/edit-promo` (không có id param)
+2. Nhập mã code: "FREESHIP02"
+3. Nhập giá trị giảm: 10% (VD: giảm 10% tổng đơn)
+4. Nhập giới hạn: 100 lượt
+5. Nhập số ngày hiệu lực: 30 ngày
+6. Nhập lượt dùng/người: 1 (mỗi user chỉ dùng 1 lần)
+7. Bật trạng thái enable (Switch)
+8. Nhấn "Lưu" → Tạo promo mới
+9. Alert "Thành công" → Back to promos list
+
+### Admin - Sửa mã có sẵn
+1. Navigate to `/admin/edit-promo?id=123`
+2. Load data: code, value, limit, maxPerUser, durationDays
+3. Xem danh sách users đã dùng (usedBy section)
+4. Sửa các trường cần thiết (VD: tăng limit, tắt enable)
+5. ⚠️ Không sửa: used, usedBy, created (readonly)
+6. Nhấn "Lưu" → Update promo
+7. Alert "Thành công" → Back to promos list
+
+### User - Sử dụng mã (không có trong file này)
+1. User vào cart → Nhập mã "FREESHIP02"
+2. Backend check:
+   - Mã tồn tại?
+   - enable = true?
+   - Chưa hết hạn? (created + durationDays)
+   - used < limit?
+   - User đã dùng < maxPerUser?
+3. Nếu hợp lệ:
+   - Apply discount: totalPrice * (value / 100)
+   - Increment used: used + 1
+   - Add userId to usedBy: arrayUnion(userId)
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không (modal-style screen)
+
+**Navigates FROM:**
+- Admin Promos page → Nhấn "Sửa" trên promo card
+- Admin Promos page → Nhấn "Thêm mã mới"
+
+**Back Navigation:**
+- Back button (header left)
+- After save success → `router.back()`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Operations
+1. **Collection:** `promos`
+2. **Document ID:**
+   - Edit: Use existing `id`
+   - Create: `Date.now().toString()` (timestamp string)
+3. **Update vs SetDoc:**
+   - Edit: `updateDoc(promoRef, finalData)`
+   - Create: `setDoc(promoRef, finalData)`
+
+### Promo Structure
+```js
+{
+  id: string,
+  code: string,          // "FREESHIP02" (uppercase)
+  value: number,         // 10 (%)
+  limit: number,         // 100 (tổng lượt dùng)
+  maxPerUser: number,    // 1 (lượt dùng/người)
+  durationDays: number,  // 30 (số ngày hiệu lực)
+  enable: boolean,       // true/false
+  used: number,          // 15 (số lượt đã dùng)
+  usedBy: number[],      // [1, 5, 10, ...] (userId array)
+  created: string        // "2026-01-27T..." (ISO timestamp)
+}
+```
+
+### Validation Rules
+4. **Required Fields:**
+   - ✅ `code`: Không rỗng
+   - ✅ `value`: Không rỗng, phải là số > 0
+   - ✅ `limit`: Không rỗng, phải là số > 0
+
+5. **Optional Fields:**
+   - `maxPerUser`: Default "1"
+   - `durationDays`: Default "30"
+   - `enable`: Default true
+
+6. **Readonly Fields:**
+   - `used`: Không cho admin sửa (system update)
+   - `usedBy`: Không cho admin sửa (system update)
+   - `created`: Không cho admin sửa (immutable)
+
+### No Validation (Suggested Improvements)
+7. **Value Range:**
+   - Không validate 0 < value <= 100
+   - Admin có thể nhập 150% (không hợp lý)
+
+8. **Duplicate Code:**
+   - Không check code đã tồn tại
+   - Có thể tạo 2 mã giống nhau
+
+9. **Expiry Display:**
+   - Không hiển thị ngày hết hạn
+   - Admin phải tự tính: created + durationDays
+
+10. **Used/Limit Display:**
+    - Không hiển thị progress: used/limit
+    - VD: "15/100 lượt đã dùng"
+
+### KeyboardAvoidingView
+11. **Behavior:**
+    - iOS: `"padding"`
+    - Android: `"height"`
+
+### UsedBy Section Style
+12. **Card Style:**
+    - Background: #fff
+    - borderRadius: 12
+    - borderWidth: 1, borderColor: #F0F0F0
+    - padding: 15
+
+13. **User Item:**
+    - flexDirection: row
+    - Avatar 35x35, borderRadius 18
+    - marginRight: 12
+    - gap: 12 between items
+
+## 🎯 USE CASES
+
+### 1. Freeship Code
+```js
+{
+  code: "FREESHIP02",
+  value: 10,           // Giảm 10% phí ship
+  limit: 100,
+  maxPerUser: 1,
+  durationDays: 30,
+  enable: true,
+  used: 25,
+  usedBy: [1, 5, 10, ...],
+  created: "2026-01-01T00:00:00.000Z"
+}
+// Expiry: 2026-01-31
+// Còn: 75 lượt (100 - 25)
+```
+
+### 2. New User Welcome
+```js
+{
+  code: "WELCOME",
+  value: 20,           // Giảm 20% đơn đầu
+  limit: 1000,
+  maxPerUser: 1,       // Chỉ dùng 1 lần/user
+  durationDays: 365,   // Hiệu lực 1 năm
+  enable: true,
+  used: 150,
+  usedBy: [1, 2, 3, ...],
+  created: "2026-01-01T00:00:00.000Z"
+}
+```
+
+### 3. Flash Sale
+```js
+{
+  code: "FLASH50",
+  value: 50,           // Giảm 50%
+  limit: 50,           // Giới hạn 50 lượt
+  maxPerUser: 1,
+  durationDays: 1,     // Chỉ 1 ngày
+  enable: true,
+  used: 50,            // Hết lượt
+  usedBy: [1, 2, 3, ...],
+  created: "2026-01-27T00:00:00.000Z"
+}
+// Expiry: 2026-01-28
+// Status: Hết lượt (used >= limit)
+```
+
+### 4. VIP Member Code
+```js
+{
+  code: "VIP100",
+  value: 15,
+  limit: 999999,       // Không giới hạn
+  maxPerUser: 999999,  // Dùng không giới hạn
+  durationDays: 365,
+  enable: true,
+  used: 5000,
+  usedBy: [1, 5, 10, ...], // Nhiều users trùng
+  created: "2026-01-01T00:00:00.000Z"
+}
+```
+
+## 🔍 PROMO CHECK LOGIC (Backend)
+
+### Apply Promo Flow
+```js
+const applyPromo = async (code, userId, totalPrice) => {
+  // 1. Find promo
+  const promo = await getDoc(doc(db, 'promos', code));
+  if (!promo.exists()) return { error: "Mã không tồn tại" };
+  
+  // 2. Check enable
+  if (!promo.enable) return { error: "Mã đã bị vô hiệu hóa" };
+  
+  // 3. Check expiry
+  const created = new Date(promo.created);
+  const expiry = new Date(created.getTime() + promo.durationDays * 24 * 60 * 60 * 1000);
+  if (Date.now() > expiry.getTime()) return { error: "Mã đã hết hạn" };
+  
+  // 4. Check limit
+  if (promo.used >= promo.limit) return { error: "Mã đã hết lượt sử dụng" };
+  
+  // 5. Check maxPerUser
+  const userUsageCount = promo.usedBy.filter(id => id === userId).length;
+  if (userUsageCount >= promo.maxPerUser) return { error: "Bạn đã sử dụng mã này" };
+  
+  // 6. Calculate discount
+  const discount = totalPrice * (promo.value / 100);
+  
+  // 7. Update promo (increment used, add userId to usedBy)
+  await updateDoc(promoRef, {
+    used: increment(1),
+    usedBy: arrayUnion(userId)
+  });
+  
+  return { discount };
+};
+```
+
+## 🚨 EDGE CASES
+
+1. **UsedBy Array Duplicate:**
+   - User dùng mã nhiều lần → usedBy có nhiều userId giống nhau
+   - VD: usedBy = [1, 1, 1, 5, 5, 10]
+   - Display: Hiển thị unique users (filter duplicate)
+
+2. **User Deleted:**
+   - userId trong usedBy nhưng user đã bị xóa
+   - `getUserInfo(userId)` → undefined
+   - Fallback: "User ID: [userId]"
+
+3. **Empty UsedBy:**
+   - Mã mới tạo, chưa ai dùng
+   - usedBy = [] (empty array)
+   - Display: "Chưa có người dùng nào sử dụng mã này."
+
+4. **Large UsedBy:**
+   - Mã popular, usedBy = 10000 users
+   - Performance: Render 10000 user items → Slow
+   - Solution: Pagination hoặc limit display (VD: chỉ show 50 đầu)
+
+5. **Code Duplicate:**
+   - Admin tạo 2 mã cùng code "FREESHIP02"
+   - Firestore: Different document IDs
+   - Problem: User apply mã → Lấy mã nào?
+   - Solution: Validate code unique khi save
+
+6. **Value > 100:**
+   - Admin nhập value = 150%
+   - Discount > totalPrice → User được trả tiền?
+   - Solution: Validate 0 < value <= 100
+
+7. **Negative Value:**
+   - Admin nhập value = -10
+   - Tăng giá thay vì giảm?
+   - Solution: Validate value > 0
+
+8. **DurationDays = 0:**
+   - Mã hết hạn ngay khi tạo
+   - Valid use case? (có thể dùng để test)
+
+## 📝 SUGGESTED IMPROVEMENTS
+
+### 1. Expiry Display
+```js
+const expiryDate = new Date(
+  new Date(formData.created).getTime() + 
+  Number(formData.durationDays) * 24 * 60 * 60 * 1000
+);
+
+<Text>Hết hạn: {expiryDate.toLocaleDateString('vi-VN')}</Text>
+```
+
+### 2. Progress Bar
+```js
+<View style={styles.progressContainer}>
+  <Text>{formData.used} / {formData.limit} lượt đã dùng</Text>
+  <View style={styles.progressBar}>
+    <View style={[styles.progressFill, { 
+      width: `${(formData.used / formData.limit) * 100}%` 
+    }]} />
+  </View>
+</View>
+```
+
+### 3. Unique Users Count
+```js
+const uniqueUsers = [...new Set(formData.usedBy)];
+<Text>Người dùng unique: {uniqueUsers.length}</Text>
+```
+
+### 4. Code Validation
+```js
+const handleSave = async () => {
+  // Check duplicate code
+  const existing = promos.find(p => 
+    p.code === formData.code.toUpperCase() && p.id !== id
+  );
+  if (existing) {
+    Alert.alert("Lỗi", "Mã này đã tồn tại");
+    return;
+  }
+  
+  // ... rest of save logic
+};
+```
+
+### 5. Value Range Validation
+```js
+const value = Number(formData.value);
+if (value <= 0 || value > 100) {
+  Alert.alert("Lỗi", "Giá trị giảm phải từ 1-100%");
+  return;
+}
+```
+
+### 6. MaxPerUser <= Limit
+```js
+const maxPerUser = Number(formData.maxPerUser);
+const limit = Number(formData.limit);
+if (maxPerUser > limit) {
+  Alert.alert("Lỗi", "Lượt dùng/người không thể lớn hơn tổng lượt");
+  return;
+}
+```
+
+### 7. UsedBy Pagination
+```js
+const [showAllUsers, setShowAllUsers] = useState(false);
+const displayUsers = showAllUsers 
+  ? formData.usedBy 
+  : formData.usedBy.slice(0, 10);
+
+<TouchableOpacity onPress={() => setShowAllUsers(!showAllUsers)}>
+  <Text>{showAllUsers ? 'Thu gọn' : `Xem tất cả (${formData.usedBy.length})`}</Text>
+</TouchableOpacity>
+```

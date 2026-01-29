@@ -1,0 +1,187 @@
+# TÓM TẮT LOGIC TRANG ADMIN/SERVICES.TSX
+
+## 🎯 MỤC ĐÍCH
+Quản lý danh sách dịch vụ sửa chữa & dọn dẹp:
+- Hiển thị tất cả services từ Firestore
+- Bật/tắt trạng thái dịch vụ (enable/disable)
+- **XUẤT Excel** (Export) - Header chuẩn DB
+- **NHẬP Excel** (Import) - Header chuẩn DB
+- Navigate đến edit-service để chỉnh sửa chi tiết
+
+## 📊 STATE & DATA
+
+**Store:**
+- `services`: Danh sách dịch vụ từ collection `services`
+
+**Local State:**
+- `isProcessing`: Trạng thái đang xử lý import/export
+
+**Excel Structure (Header chuẩn DB):**
+```
+id, name, priceNormal, pricePromo, moneyShare, image, status, index, shopId, note
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### Display Flow
+1. Load `services` từ store
+2. Hiển thị FlatList với card dịch vụ
+3. Mỗi card có Switch bật/tắt
+
+### Toggle Status
+1. Nhấn Switch
+2. Gọi `handleToggleService(id, currentStatus)`
+3. Toggle `enable ↔ disable`
+4. Update Firestore `services/{id}`
+
+### Export Excel
+1. Nhấn nút Export (cloud-download)
+2. Map services array thành format Excel đơn giản
+3. Tạo Excel file: `DB_Services_{timestamp}.xlsx`
+4. **Web:** Auto download
+5. **Mobile:** Share file
+
+### Import Excel
+1. Nhấn nút Import (cloud-upload)
+2. Chọn file Excel
+3. Parse file thành JSON
+4. Batch write vào Firestore
+5. Alert thành công
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleToggleService(id, currentStatus)`
+```js
+const newStatus = currentStatus === 'enable' ? 'disable' : 'enable';
+await updateDoc(doc(db, 'services', id.toString()), { status: newStatus });
+```
+
+### `handleExportExcel()`
+```js
+const dataToExport = services.map(item => ({
+  id: item.id,
+  name: item.name,
+  priceNormal: item.priceNormal,
+  pricePromo: item.pricePromo,
+  moneyShare: item.moneyShare,   // % chia sẻ cho Admin
+  image: item.image,
+  status: item.status,
+  index: item.index,
+  shopId: item.shopId,
+  note: item.note
+}));
+
+const ws = XLSX.utils.json_to_sheet(dataToExport);
+const wb = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(wb, ws, "ServicesData");
+const fileName = `DB_Services_${Date.now()}.xlsx`;
+```
+
+### `handleImportExcel()`
+```js
+const payload = {
+  id: isNaN(Number(docId)) ? docId : Number(docId),
+  name: row["name"] || "Dịch vụ mới",
+  priceNormal: Number(row["priceNormal"]) || 0,
+  pricePromo: Number(row["pricePromo"]) || 0,
+  moneyShare: Number(row["moneyShare"]) || 0,
+  image: row["image"] || "",
+  status: row["status"] || "enable",
+  index: Number(row["index"]) || 0,
+  shopId: Number(row["shopId"]) || 0,
+  note: row["note"] || "",
+  log: []
+};
+batch.set(docRef, payload, { merge: true });
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Quản lý Dịch vụ"
+  │   └─ Button Group
+  │       ├─ Import Button (#2980B9)
+  │       ├─ Export Button (#27AE60)
+  │       └─ Add Button (primary)
+  │
+  └─ FlatList (Service Cards)
+      └─ renderServiceItem: Card
+          ├─ Image (60x60)
+          ├─ Info
+          │   ├─ Row: Name + Switch
+          │   ├─ Price: "Giá bán: XK oldPrice"
+          │   └─ Row: "Admin: X%" + ID
+          │
+          └─ onPress: Navigate to /admin/edit-service
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Đơn giản hơn Products:** Không có option, image array (chỉ 1 ảnh)
+2. **moneyShare Field:** % tiền admin nhận từ dịch vụ (VD: 20%)
+3. **log Array:** Reset về `[]` khi import (hoặc giữ nguyên tùy logic)
+4. **No Search:** Không có search bar (ít dịch vụ hơn food)
+5. **Empty State:** "Không tìm thấy dịch vụ nào."
+6. **ActivityIndicator:** Hiện spinner khi processing
+7. **Merge Mode:** `{merge: true}` để không ghi đè
+8. **Switch Color:** trackColor false=#D1D1D1, true=primary+50
+9. **Card Style:** elevation: 3, borderRadius: 15
+10. **Price Display:** `{pricePromo}K` với `{priceNormal}K` strikethrough
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào Admin Services từ dashboard (hoặc tương tự)
+2. Xem danh sách dịch vụ
+3. **Export:** Nhấn Export → Download Excel
+4. **Edit Excel:** Sửa giá, moneyShare, thêm dịch vụ mới
+5. **Import:** Nhấn Import → Chọn file → Import
+6. **Toggle:** Bật/tắt dịch vụ
+7. **Edit:** Nhấn card → Edit-service page
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/admin/edit-service` (nhấn card hoặc nút Add)
+
+**Navigates FROM:**
+- Admin dashboard (hoặc menu quản lý)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Excel Headers:** Match chính xác với Firestore field names
+2. **moneyShare:** Number (0-100), đơn vị %
+3. **image:** Single URL string (không phải array như food)
+4. **status:** 'enable' | 'disable'
+5. **ID Type:** Có thể là Number hoặc String, check `isNaN(Number(docId))`
+6. **log Field:** Array rỗng khi import mới
+7. **Fallback Values:**
+   - name: "Dịch vụ mới"
+   - status: "enable"
+   - index: 0
+   - shopId: 0
+8. **No Time Fields:** Dịch vụ không có timeStart/timeEnd
+9. **Card Height:** Auto height, không fixed
+10. **No Status Label:** Chỉ dựa vào Switch và opacity
+11. **Disabled Card:** opacity: 0.6 khi status=disable
+12. **Platform Support:** Web + Mobile (iOS/Android)
+13. **File Picker:** DocumentPicker với type xlsx
+14. **Share API:** Sharing.isAvailableAsync() trước khi share
+15. **Error Handling:** Try-catch với Alert feedback
+
+## 🔍 SO SÁNH VỚI PRODUCTS
+
+**Giống:**
+- Cùng pattern Import/Export
+- Cùng UI layout: Header + List + Card
+- Cùng Toggle switch
+
+**Khác:**
+- Services: Đơn giản hơn (no option, no image array)
+- Services: Có moneyShare field
+- Services: Không có search
+- Services: Không có timeStart/timeEnd
+- Services: Ít record hơn → Không cần pagination

@@ -1,0 +1,638 @@
+# TÓM TẮT LOGIC TRANG ADMIN/EDIT-USER.TSX
+
+## 🎯 MỤC ĐÍCH
+Màn hình chỉnh sửa hồ sơ người dùng (admin only):
+- Cập nhật thông tin tài khoản: tên, SĐT, mật khẩu, địa chỉ
+- Quản lý vai trò (role): user, admin, chủ shop, shipper, manager
+- Cấu hình hệ thống: status, mustCheckIn, point, index
+- Upload ảnh shop (imgShop, imgShopSquare) lên ImgBB
+- Không tạo mới user (chỉ edit)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `users`: Danh sách người dùng (load để edit)
+
+**Route Params:**
+- `id`: ID user (required, không có tạo mới)
+
+**Local State:**
+```js
+uploadingField: 'imgShop' | 'imgShopSquare' | null // Track field đang upload
+formData: {
+  id: number,
+  uid: string,              // Firebase Auth UID
+  name: string,
+  phone: string,
+  password: string,         // ⚠️ Plaintext password
+  address: string,
+  role: 'user' | 'admin' | 'chủ shop' | 'shipper' | 'manager',
+  status: 'enable' | 'disable',
+  mustCheckIn: 'enable' | 'disable',
+  checkInDate: string,
+  point: string,
+  index: number,
+  shopName: string,
+  imgShop: string,          // Ảnh ngang 16:9
+  imgShopSquare: string,    // Ảnh vuông 1:1
+  expoToken: string
+}
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Load User Data
+```js
+useEffect(() => {
+  if (id) {
+    const user = users.find(x => x.id === id);
+    if (user) {
+      setFormData({
+        ...user,
+        point: user.point?.toString() || '',
+        index: user.index || 1
+      });
+    }
+  }
+}, [id, users]);
+```
+
+### 2. Upload Ảnh ImgBB
+```js
+const handleUpload = async (field) => {
+  // 1. Pick image
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    aspect: field === 'imgShop' ? [16, 9] : [1, 1], // Aspect khác nhau
+    quality: 0.7
+  });
+  
+  if (result.canceled) return;
+  
+  setUploadingField(field); // Show loading
+  
+  // 2. Prepare FormData
+  const data = new FormData();
+  data.append('image', {
+    uri: Platform.OS === 'ios' ? imageUri.replace('file://', '') : imageUri,
+    type: 'image/jpeg',
+    name: 'upload.jpg'
+  });
+  
+  // 3. Upload to ImgBB
+  const response = await fetch(
+    `https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`,
+    { method: 'POST', body: data, headers: { 'Content-Type': 'multipart/form-data' }}
+  );
+  
+  const resJson = await response.json();
+  if (resJson.success) {
+    setFormData(prev => ({ ...prev, [field]: resJson.data.url }));
+  }
+  
+  setUploadingField(null); // Hide loading
+};
+```
+
+### 3. Save to Firestore
+```js
+const handleSave = async () => {
+  // Validation
+  if (!formData.name || !formData.phone) {
+    Alert.alert("Lỗi", "Tên và Số điện thoại không được để trống");
+    return;
+  }
+  
+  try {
+    const userRef = doc(db, 'users', id.toString());
+    const payload = {
+      ...formData,
+      id: Number(formData.id),
+      index: Number(formData.index || 1)
+    };
+    
+    await updateDoc(userRef, payload);
+    
+    Alert.alert("Thành công", `Đã cập nhật User #${id}`, [
+      { text: "OK", onPress: () => router.back() }
+    ]);
+  } catch (err) {
+    Alert.alert("Lỗi cập nhật", err.message);
+  }
+};
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### ImgBB Upload với Platform Handling
+```js
+const IMGBB_API_KEY = '4be67bc1f9e424d0e25f23a35ab95c03';
+
+// iOS: Remove 'file://' prefix
+const imageUri = Platform.OS === 'ios' 
+  ? result.assets[0].uri.replace('file://', '') 
+  : result.assets[0].uri;
+
+// FormData structure for native
+data.append('image', {
+  uri: imageUri,
+  type: 'image/jpeg',
+  name: 'upload.jpg'
+});
+```
+
+### Role Selection
+```js
+const roles = ['user', 'admin', 'chủ shop', 'shipper', 'manager'];
+
+<View style={styles.roleGrid}>
+  {roles.map(r => (
+    <TouchableOpacity 
+      key={r}
+      style={[styles.roleItem, formData.role === r && styles.roleActive]}
+      onPress={() => setFormData({...formData, role: r})}
+    >
+      <Text>{r}</Text>
+    </TouchableOpacity>
+  ))}
+</View>
+```
+
+### Toggle Status/MustCheckIn
+```js
+<TouchableOpacity 
+  style={[styles.toggleBtn, formData.status === 'enable' ? styles.bgGreen : styles.bgRed]}
+  onPress={() => setFormData({
+    ...formData, 
+    status: formData.status === 'enable' ? 'disable' : 'enable'
+  })}
+>
+  <Text>{formData.status === 'enable' ? 'Kích hoạt' : 'Khóa'}</Text>
+</TouchableOpacity>
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  └─ KeyboardAvoidingView
+      ├─ Header
+      │   ├─ Close Button
+      │   ├─ Title: "Hồ sơ người dùng"
+      │   │   └─ Subtitle: "ID: [id] | UID: [uid]"
+      │   └─ Save Button
+      │
+      └─ ScrollView
+          ├─ Section: TÀI KHOẢN & BẢO MẬT
+          │   ├─ Họ và tên
+          │   ├─ Row: Số điện thoại | Mật khẩu
+          │   └─ Địa chỉ
+          │
+          ├─ Section: CẤU HÌNH HỆ THỐNG
+          │   ├─ Vai trò (Role Grid - 5 buttons)
+          │   ├─ Row: Trạng thái | Must Check-in (Toggle buttons)
+          │   └─ Row: Điểm (Point) | Thứ tự (Index)
+          │
+          ├─ Section: THÔNG TIN CỬA HÀNG
+          │   ├─ Tên Shop
+          │   ├─ Ảnh ngang (Landscape URL) + Upload icon
+          │   └─ Ảnh vuông (Square URL) + Upload icon
+          │
+          └─ ExpoToken (readonly text)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Image Upload
+1. **2 Loại Ảnh:**
+   - `imgShop`: Ảnh ngang 16:9 (banner shop)
+   - `imgShopSquare`: Ảnh vuông 1:1 (logo shop)
+
+2. **Upload Button:**
+   - Inline với TextInput (inputWithIcon layout)
+   - Icon khác nhau: `cloud-upload` vs `image`
+   - Color khác nhau: primary vs #E67E22
+
+3. **Loading State:**
+   - `uploadingField = 'imgShop'` → Show spinner cho imgShop field
+   - `uploadingField = 'imgShopSquare'` → Show spinner cho imgShopSquare field
+   - Các field khác không bị disable
+
+4. **Quality:**
+   - 0.7 (cao hơn edit-food dùng 0.5)
+   - Lý do: Ảnh shop cần chất lượng tốt hơn
+
+### Role Management
+5. **5 Roles:**
+   - `user`: Người dùng thường
+   - `admin`: Quản trị viên
+   - `chủ shop`: Chủ cửa hàng
+   - `shipper`: Người giao hàng
+   - `manager`: Quản lý (role đặc biệt)
+
+6. **Role Grid:**
+   - flexWrap để tự xuống dòng
+   - Active role: Background primary, text white
+   - Inactive role: Background white, text gray
+
+### Status Fields
+7. **Status:**
+   - `enable`: Tài khoản kích hoạt (màu xanh #27AE60)
+   - `disable`: Tài khoản bị khóa (màu đỏ #EB5757)
+
+8. **MustCheckIn:**
+   - `enable`: Bắt buộc check-in (màu xanh)
+   - `disable`: Không bắt buộc (màu đỏ)
+   - Dùng cho shipper/shop (tracking location)
+
+### Point System
+9. **Point Field:**
+   - Điểm tích lũy của user
+   - String input → Parse khi save
+   - Dùng cho chương trình loyalty
+
+10. **Index Field:**
+    - Thứ tự hiển thị user
+    - Default: 1
+    - Dùng cho sorting (VD: admin index=0 lên đầu)
+
+### Shop Info
+11. **ShopName:**
+    - Tên cửa hàng (cho role 'chủ shop')
+    - Empty nếu không phải chủ shop
+
+12. **ImgShop:**
+    - Ảnh ngang (landscape banner)
+    - Aspect 16:9
+    - Hiển thị trên trang shop
+
+13. **ImgShopSquare:**
+    - Ảnh vuông (logo)
+    - Aspect 1:1
+    - Hiển thị trong list, avatar
+
+### ExpoToken
+14. **Readonly:**
+    - Hiển thị dưới cùng
+    - fontSize 9, color #ccc
+    - Không cho edit (system generated)
+
+15. **Purpose:**
+    - Push notification token
+    - Firebase Cloud Messaging
+
+## 🚀 USER JOURNEY
+
+### Admin - Sửa thông tin user
+1. Navigate to `/admin/edit-user?id=123`
+2. Load user data từ store
+3. **Section 1: Tài khoản**
+   - Sửa tên, SĐT, password, địa chỉ
+4. **Section 2: Cấu hình**
+   - Chọn role (nhấn vào role button)
+   - Toggle status (kích hoạt/khóa)
+   - Toggle mustCheckIn (bật/tắt)
+   - Nhập point, index
+5. **Section 3: Cửa hàng** (nếu role là 'chủ shop')
+   - Nhập tên shop
+   - Upload ảnh ngang (nhấn icon cloud-upload)
+   - Upload ảnh vuông (nhấn icon image)
+6. Nhấn "Lưu" → Update Firestore
+7. Alert "Thành công" → Back to users list
+
+### Admin - Upload ảnh shop
+1. Nhấn upload icon (cloud-upload hoặc image)
+2. Pick ảnh từ gallery
+3. Crop ảnh theo aspect (16:9 hoặc 1:1)
+4. Chờ upload → Spinner hiển thị
+5. Upload thành công → URL update vào TextInput
+6. Có thể preview ảnh (không có trong code, nên thêm)
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không (modal-style screen)
+
+**Navigates FROM:**
+- Admin Users page → Nhấn "Sửa" trên user card
+
+**Back Navigation:**
+- Close icon (header left)
+- After save success → `router.back()`
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Firestore Operations
+1. **Collection:** `users`
+2. **Document ID:** Use `id.toString()` (vì id là number)
+3. **Only Update:** Không tạo mới user (không có setDoc)
+4. **Why?** User được tạo qua register flow với Firebase Auth
+
+### User Structure
+```js
+{
+  id: number,               // User ID
+  uid: string,              // Firebase Auth UID
+  name: string,
+  phone: string,
+  password: string,         // ⚠️ Plaintext
+  address: string,
+  role: string,
+  status: 'enable' | 'disable',
+  mustCheckIn: 'enable' | 'disable',
+  checkInDate: string,
+  point: number,
+  index: number,
+  shopName: string,
+  imgShop: string,
+  imgShopSquare: string,
+  expoToken: string
+}
+```
+
+### Security Concerns
+5. **⚠️ Plaintext Password:**
+   - Password lưu dạng plaintext trong Firestore
+   - KHÔNG secure (nên hash bằng bcrypt)
+   - Admin có thể xem/sửa password
+
+6. **Password Display:**
+   - Hiển thị trong TextInput (không secure)
+   - Không có secureTextEntry
+
+7. **Suggested Fix:**
+   ```js
+   // Khi save, nếu password thay đổi
+   if (password !== originalPassword) {
+     // Update Firebase Auth password
+     await updatePassword(auth.currentUser, newPassword);
+     // Không lưu password vào Firestore
+   }
+   ```
+
+### ImgBB Integration
+8. **API Key:** `4be67bc1f9e424d0e25f23a35ab95c03` (same as edit-food)
+9. **FormData:** Native structure (khác web)
+10. **Headers:** `Content-Type: multipart/form-data`
+11. **Response:** `data.data.url` chứa URL ảnh
+
+### Platform Differences
+12. **iOS Image URI:**
+    - Có prefix `file://`
+    - Phải remove: `.replace('file://', '')`
+
+13. **Android Image URI:**
+    - Không có prefix `file://`
+    - Dùng trực tiếp
+
+### KeyboardAvoidingView
+14. **Behavior:**
+    - iOS: `"padding"`
+    - Android: `null` (không cần)
+
+### Validation
+15. **Required Fields:**
+    - ✅ `name`: Không rỗng
+    - ✅ `phone`: Không rỗng
+
+16. **Optional Fields:**
+    - All other fields có thể rỗng
+
+17. **No Validation:**
+    - Phone format (không check 10 digits)
+    - Password strength
+    - Image URL format
+
+### Form Sections
+18. **Section Style:**
+    - backgroundColor: #fff
+    - borderRadius: 15
+    - padding: 15
+    - marginBottom: 15
+    - elevation: 1 (shadow)
+
+19. **Section Title:**
+    - fontSize: 11, bold
+    - color: primary
+    - letterSpacing: 0.5
+    - marginBottom: 10
+
+### Role Grid Layout
+20. **flexWrap:** Tự động xuống dòng khi hết chỗ
+21. **Role Item:**
+    - paddingHorizontal: 10
+    - paddingVertical: 5
+    - borderRadius: 12
+    - marginRight: 6, marginBottom: 6
+
+22. **Active Style:**
+    - backgroundColor: primary
+    - borderColor: primary
+    - Text color: white, bold
+
+### Toggle Button Style
+23. **Normal:**
+    - padding: 10
+    - borderRadius: 8
+    - alignItems: center
+
+24. **Green (enable):**
+    - backgroundColor: #27AE60
+
+25. **Red (disable):**
+    - backgroundColor: #EB5757
+
+### Input With Icon Layout
+26. **flexDirection: row**
+27. **Input:** `flex: 1` (chiếm hết space)
+28. **Icon:** `marginLeft: 10, padding: 5`
+
+## 🔍 ROLE PERMISSIONS (not in this file)
+
+### Role Capabilities
+| Role | Khả năng |
+|------|----------|
+| **user** | Đặt hàng, xem lịch sử, tích điểm |
+| **admin** | Toàn quyền quản trị |
+| **chủ shop** | Quản lý sản phẩm/dịch vụ của shop mình |
+| **shipper** | Nhận đơn, giao hàng, xem thu nhập |
+| **manager** | Xem báo cáo, quản lý một phần (giữa admin và user) |
+
+## 🎯 USE CASES
+
+### 1. Admin sửa thông tin user thường
+```js
+// User ID: 5
+{
+  name: "Nguyễn Văn A",
+  phone: "0901234567",
+  address: "123 Đường ABC, Quận 1, TP.HCM",
+  role: "user",
+  status: "enable",
+  mustCheckIn: "disable",
+  point: "100",
+  index: 1,
+  // Không cần shop fields
+}
+```
+
+### 2. Admin thêm shop owner
+```js
+// User ID: 10
+{
+  name: "Trần Thị B",
+  phone: "0902345678",
+  role: "chủ shop",
+  status: "enable",
+  shopName: "Quán Ăn Ngon",
+  imgShop: "https://i.ibb.co/xxx/banner.jpg",      // 16:9
+  imgShopSquare: "https://i.ibb.co/xxx/logo.jpg",  // 1:1
+  // Shop owner có thể upload ảnh shop
+}
+```
+
+### 3. Admin cấu hình shipper
+```js
+// User ID: 20
+{
+  name: "Lê Văn C",
+  phone: "0903456789",
+  role: "shipper",
+  status: "enable",
+  mustCheckIn: "enable", // Bắt buộc check-in để track location
+  index: 1,
+  // Shipper không cần shop fields
+}
+```
+
+### 4. Admin khóa tài khoản vi phạm
+```js
+// User ID: 15
+{
+  name: "Phạm Văn D",
+  role: "user",
+  status: "disable", // Khóa tài khoản
+  // User không thể login nữa
+}
+```
+
+## 🚨 SECURITY ISSUES
+
+### Critical
+1. **⚠️ Plaintext Password Storage:**
+   - Password lưu dạng text trong Firestore
+   - Admin có thể xem password của tất cả users
+   - KHÔNG secure
+
+2. **⚠️ Password Display:**
+   - TextInput không dùng `secureTextEntry`
+   - Password hiển thị rõ ràng
+
+3. **⚠️ No Password Validation:**
+   - Có thể đặt password rỗng
+   - Không check độ dài tối thiểu
+
+### Recommended Fixes
+```js
+// 1. Không lưu password vào Firestore
+// 2. Chỉ update Firebase Auth password
+const handleSave = async () => {
+  // ... validate
+  
+  // Update Firestore (không include password)
+  const { password, ...userData } = formData;
+  await updateDoc(userRef, userData);
+  
+  // Nếu password thay đổi, update Firebase Auth
+  if (password && password !== originalPassword) {
+    const user = auth.currentUser;
+    await updatePassword(user, password);
+  }
+};
+
+// 3. Dùng secureTextEntry cho password field
+<TextInput 
+  secureTextEntry 
+  value={formData.password} 
+  onChangeText={t => setFormData({...formData, password: t})} 
+/>
+```
+
+## 📝 SUGGESTED IMPROVEMENTS
+
+### 1. Image Preview
+```js
+{formData.imgShop && (
+  <Image source={{ uri: formData.imgShop }} style={styles.imagePreview} />
+)}
+```
+
+### 2. Phone Validation
+```js
+const validatePhone = (phone) => {
+  const regex = /^0\d{9}$/;
+  return regex.test(phone);
+};
+
+if (!validatePhone(formData.phone)) {
+  Alert.alert("Lỗi", "Số điện thoại không hợp lệ (phải 10 chữ số, bắt đầu bằng 0)");
+  return;
+}
+```
+
+### 3. Role Description
+```js
+const roleDescriptions = {
+  user: "Người dùng thường",
+  admin: "Quản trị viên (toàn quyền)",
+  'chủ shop': "Chủ cửa hàng",
+  shipper: "Người giao hàng",
+  manager: "Quản lý"
+};
+
+<Text style={styles.roleDescription}>
+  {roleDescriptions[formData.role]}
+</Text>
+```
+
+### 4. Confirm Dialog for Status Change
+```js
+const handleToggleStatus = () => {
+  if (formData.status === 'enable') {
+    Alert.alert(
+      "Xác nhận khóa",
+      "Khóa tài khoản này? User sẽ không thể đăng nhập.",
+      [
+        { text: "Hủy", style: "cancel" },
+        { text: "Khóa", onPress: () => setFormData({...formData, status: 'disable'}) }
+      ]
+    );
+  } else {
+    setFormData({...formData, status: 'enable'});
+  }
+};
+```
+
+### 5. UID Display
+```js
+<TouchableOpacity onPress={() => Clipboard.setString(formData.uid)}>
+  <Text>UID: {formData.uid} (nhấn để copy)</Text>
+</TouchableOpacity>
+```
+
+### 6. CheckInDate Display
+```js
+{formData.mustCheckIn === 'enable' && formData.checkInDate && (
+  <Text>Check-in cuối: {new Date(formData.checkInDate).toLocaleString('vi-VN')}</Text>
+)}
+```
+
+### 7. Shop Fields Visibility
+```js
+{formData.role === 'chủ shop' && (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>THÔNG TIN CỬA HÀNG</Text>
+    {/* Shop fields */}
+  </View>
+)}
+```

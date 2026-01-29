@@ -1,15 +1,21 @@
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect } from "react";
-import { Platform } from "react-native"; // Thêm Platform để check Web/Mobile
+import { Platform } from "react-native";
 import { useAppStore } from "../store/useAppStore";
 
-// 1. Hàm gửi thông báo - Đã mở fetch và thêm sound
-export async function sendNotification(title, body, token) {
-    if (!token) return console.log("Thiếu token, không gửi được!");
+// 1. Gửi notification TRỰC TIẾP qua Expo API (chỉ cho native app)
+export async function sendNotificationDirect(title, body, token) {
+    if (!token) return console.log("❌ Thiếu token, không gửi được!");
+
+    console.log("📤 Gửi notification TRỰC TIẾP (native)...");
+    console.log("   Title:", title);
+    console.log("   Body:", body);
+    console.log("   Token:", token.substring(0, 20) + "...");
 
     try {
-        await fetch("https://exp.host/--/api/v2/push/send", {
+        const response = await fetch("https://exp.host/--/api/v2/push/send", {
             method: "POST",
             headers: {
                 Accept: "application/json",
@@ -20,14 +26,77 @@ export async function sendNotification(title, body, token) {
                 to: token,
                 title: title,
                 body: body,
-                sound: "default", // Thêm dòng này để máy kêu "tưng tưng"
-                priority: "high", // Đảm bảo gửi đi ngay lập tức
+                sound: "default",
+                priority: "high",
             }),
-        })
-        console.log("Đã gửi thông báo tới:", token);
+        });
+
+        const result = await response.json();
+        console.log("✅ Response từ Expo:", result);
+
+        if (result.data && result.data.status === "error") {
+            console.log("❌ Lỗi từ Expo:", result.data.message);
+        }
     } catch (err) {
-        console.log('Lỗi gửi fetch:', err);
+        console.log("❌ Lỗi gửi fetch:", err);
     }
+}
+
+// 2. Gửi notification QUA CLOUD FUNCTION (cho web + backend handling)
+export async function sendNotificationViaCloudFunction(title, body, token) {
+    // Kiểm tra input
+    if (!title || !body || !token) {
+        const missingFields = [];
+        if (!title) missingFields.push("title");
+        if (!body) missingFields.push("body");
+        if (!token) missingFields.push("token");
+        console.error("❌ Thiếu field:", missingFields.join(", "));
+        throw new Error(`Missing required fields: ${missingFields.join(", ")}`);
+    }
+
+    console.log("📤 Gửi notification QUA CLOUD FUNCTION...");
+    console.log("   Title:", title);
+    console.log("   Body:", body);
+    console.log("   Token:", token.substring(0, 20) + "...");
+
+    try {
+        const functions = getFunctions();
+        // Chỉ định region us-central1 vì Cloud Function ở region này
+        const sendNotifFunction = httpsCallable(functions, "sendExpoNotification", { region: "us-central1" });
+
+        const requestData = {
+            title: title,
+            body: body,
+            token: token,
+        };
+
+        console.log("📮 Gửi request với dữ liệu:", {
+            title: requestData.title,
+            body: requestData.body,
+            token: requestData.token.substring(0, 20) + "..."
+        });
+        console.log("📮 Full request data:", requestData);
+        
+        const result = await sendNotifFunction(requestData);
+
+        console.log("✅ Cloud Function response:", result.data);
+        return result.data;
+    } catch (error) {
+        console.error("❌ Lỗi gửi via Cloud Function:", error.message);
+        console.error("Chi tiết lỗi:", error);
+        throw error;
+    }
+}
+
+// 3. SMART FUNCTION - Chọn tự động dựa vào platform
+export async function sendNotification(title, body, token) {
+    // Nếu web: dùng Cloud Function (tránh CORS)
+    if (Platform.OS === "web") {
+        return await sendNotificationViaCloudFunction(title, body, token);
+    }
+    
+    // Nếu native: gửi trực tiếp (tiết kiệm invocations, nhanh hơn)
+    return await sendNotificationDirect(title, body, token);
 }
 
 export default function NotificationProcess() {

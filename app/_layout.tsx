@@ -1,9 +1,9 @@
 // FILE: app/_layout.tsx
 // @ts-nocheck
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar'; // Bổ sung StatusBar
-import React, { useEffect, useState } from 'react'; // Bổ sung React
-import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react'; // Bổ sung React
+import { Alert, AppState, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import NotificationProcess from '../src/components/Notification';
 import { useAppStore } from '../src/store/useAppStore';
 
@@ -12,17 +12,99 @@ const PHONE_WIDTH = 430;
 const PHONE_HEIGHT = 932;
 
 export default function RootLayout() {
+  const router = useRouter();
   const listenAllData = useAppStore((state) => state.listenAllData);
+  const currentUser = useAppStore((state) => state.currentUser);
+  const checkCrashOnRestart = useAppStore((state) => state.checkCrashOnRestart);
+  const logOnlineToLocal = useAppStore((state) => state.logOnlineToLocal);
+  const logOfflineAndUpload = useAppStore((state) => state.logOfflineAndUpload);
+  const ensureShipperReadyFresh = useAppStore((state) => state.ensureShipperReadyFresh);
   
   // Lấy kích thước trình duyệt
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [mounted, setMounted] = useState(false);
+  const appState = useRef(AppState.currentState);
+  const hasAlerted = useRef(false); // Track để tránh alert 2 lần
 
   useEffect(() => {
     setMounted(true); // Đánh dấu đã mount để tránh lỗi render lần đầu
     const unsubscribe = listenAllData();
     return () => unsubscribe && unsubscribe();
   }, []);
+
+  // Reset trạng thái ready của shipper và shop owner mỗi ngày khi app mở
+  useEffect(() => {
+    if (!currentUser || (currentUser.role !== 'shipper' && currentUser.role !== 'chủ shop')) return;
+    if (hasAlerted.current) return; // Đã alert rồi thì không alert nữa
+    
+    const checkAndAlert = async () => {
+      await ensureShipperReadyFresh();
+      
+      // Đợi một chút để state cập nhật sau khi reset
+      setTimeout(() => {
+        if (!currentUser.isReady && !hasAlerted.current) {
+          hasAlerted.current = true; // Đánh dấu đã alert
+          
+          if (Platform.OS === 'web') {
+            if (window.confirm('Bạn chưa bật trạng thái "Sẵn sàng" hôm nay. Đi đến Hồ sơ để bật?')) {
+              router.push('/(tabs)/profile');
+            }
+          } else {
+            Alert.alert(
+              'Chưa bật sẵn sàng',
+              'Bạn chưa bật trạng thái "Sẵn sàng" hôm nay. Vui lòng vào Hồ sơ để bật trước khi nhận đơn.',
+              [
+                { text: 'Để sau', style: 'cancel' },
+                { text: 'Đi đến Hồ sơ', onPress: () => {
+                  router.push('/(tabs)/profile');
+                }}
+              ]
+            );
+          }
+        }
+      }, 500);
+    };
+    
+    checkAndAlert();
+  }, [currentUser?.id]);
+
+  // Setup online/offline tracking
+  useEffect(() => {
+    if (!currentUser || !currentUser.id) {
+      console.log('[AppState] No currentUser or ID, skip tracking');
+      return;
+    }
+
+    console.log(`[AppState] 🟢 Setup tracking for user: ${currentUser.id}`);
+
+    // Kiểm tra crash khi app restart
+    checkCrashOnRestart();
+
+    // Ghi log online khi app khởi động
+    logOnlineToLocal();
+
+    // Setup AppState listener
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const timestamp = new Date().toLocaleTimeString('vi-VN');
+      
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log(`[AppState] ✅ ${timestamp} | State: ${appState.current} → ${nextAppState} | ACTION: logOnlineToLocal()`);
+        logOnlineToLocal();
+      } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
+        console.log(`[AppState] ⏸️ ${timestamp} | State: ${appState.current} → ${nextAppState} | ACTION: logOfflineAndUpload()`);
+        logOfflineAndUpload();
+      } else {
+        console.log(`[AppState] ℹ️ ${timestamp} | State: ${appState.current} → ${nextAppState} | (No action)`);
+      }
+      
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      console.log('[AppState] 🔴 Cleanup tracking');
+      subscription.remove();
+    };
+  }, [currentUser]);
 
   const AppContent = (
     <>

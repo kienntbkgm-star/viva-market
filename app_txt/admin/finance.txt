@@ -1,0 +1,201 @@
+# TÓM TẮT LOGIC TRANG ADMIN/FINANCE.TSX
+
+## 🎯 MỤC ĐÍCH
+Quản lý tài chính shipper - Xem công nợ:
+- Hiển thị danh sách tất cả shipper
+- Tính toán số dư công nợ từ transactions
+- Hiển thị shipper nợ Admin (số dương, màu cam)
+- Hiển thị Admin nợ shipper (số âm, màu xanh)
+- Navigate đến shipper-detail-finance để xem chi tiết
+
+## 📊 STATE & DATA
+
+**Store:**
+- `users`: Danh sách người dùng (filter role='shipper')
+
+**Local State:**
+- `allTransactions`: Danh sách giao dịch từ Firestore realtime
+
+**Realtime Listener:**
+- Query toàn bộ collection `transactions`
+- onSnapshot để update real-time
+
+## 🔄 LUỒNG THỰC THI
+
+### Load Data
+1. Filter users → Lấy chỉ `role === 'shipper'`
+2. Query Firestore `transactions` collection
+3. Setup realtime listener với `onSnapshot`
+4. Mỗi lần có transaction mới → Update state
+
+### Calculate Debt
+```js
+const rawDebt = allTransactions
+  .filter(t => t.userId === shipperId)
+  .reduce((sum, t) => sum + (t.amount || 0), 0);
+```
+
+Logic hiển thị:
+- `rawDebt > 0` → Shipper nợ Admin (màu #E67E22 cam, dấu +)
+- `rawDebt < 0` → Admin nợ shipper (màu #27AE60 xanh, dấu -)
+- `rawDebt = 0` → Không nợ (màu xanh, 0đ)
+
+### Navigate Detail
+1. Nhấn shipper card
+2. Navigate to `/admin/shipper-detail-finance`
+3. Pass params: `{ shipperId, name }`
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### Realtime Listener
+```js
+useEffect(() => {
+  const q = query(collection(db, 'transactions'));
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    setAllTransactions(snapshot.docs.map(doc => doc.data()));
+  });
+  return () => unsubscribe();
+}, []);
+```
+
+### Calculate Shipper List
+```js
+const shippers = users.filter(u => u.role === 'shipper').map(s => {
+  const rawDebt = allTransactions
+    .filter(t => t.userId === s.id)
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  
+  return { ...s, currentDebt: rawDebt };
+});
+```
+
+### Render Logic
+```js
+<Text style={[styles.money, { color: item.currentDebt >= 0 ? '#E67E22' : '#27AE60' }]}>
+  {item.currentDebt > 0 ? '+' : ''}{(item.currentDebt * 1000).toLocaleString()}đ
+</Text>
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Tài chính Shipper"
+  │   └─ Spacer (width: 28)
+  │
+  └─ FlatList (Shipper Cards)
+      └─ renderShipper: Card
+          ├─ Avatar (chữ cái đầu)
+          ├─ Info
+          │   ├─ Name
+          │   └─ Phone
+          └─ Right
+              ├─ Money (màu theo dương/âm)
+              └─ Chevron forward
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Realtime Update:** Dùng `onSnapshot` để auto update khi có transaction mới
+2. **Debt Logic:** 
+   - `DEBT` type: amount dương (shipper nợ admin)
+   - `PAYMENT` type: amount âm (admin nộp cho shipper)
+   - Sum tất cả = số dư hiện tại
+3. **Color Coding:**
+   - Dương (>=0): #E67E22 (cam) - "Shipper nợ Admin"
+   - Âm (<0): #27AE60 (xanh) - "Admin nợ shipper"
+4. **Plus Sign:** Hiển thị `+` nếu số dương
+5. **Empty State:** "Không có shipper nào" nếu list rỗng
+6. **Avatar:** Chữ cái đầu tên, background primary
+7. **Card Style:** elevation 2, borderRadius 15
+8. **Money Display:** `(debt * 1000).toLocaleString() + 'đ'`
+9. **Navigate Params:** Pass cả id và name để dễ hiển thị
+10. **Listener Cleanup:** Return unsubscribe trong useEffect
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào Admin Finance từ dashboard
+2. Xem danh sách shipper với số dư công nợ
+3. Nhận biết shipper nào nợ (cam) hoặc được nợ (xanh)
+4. Nhấn vào shipper → Xem chi tiết giao dịch
+5. Trong detail page có thể thêm transaction mới (nộp tiền/bù tiền)
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/admin/shipper-detail-finance` (params: shipperId, name)
+
+**Navigates FROM:**
+- Admin dashboard menu "Quản lý Tài chính"
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Transaction Structure:**
+   ```js
+   {
+     userId: shipperId,
+     type: 'DEBT' | 'PAYMENT',
+     amount: number (dương/âm),
+     orderId: string,
+     desc: string,
+     createdAt: ISO string,
+     performedBy: 'system' | 'admin'
+   }
+   ```
+2. **Query All Transactions:** Không filter userId (cần tất cả để tính sum)
+3. **Filter Per Shipper:** `.filter(t => t.userId === shipperId)`
+4. **Reduce Sum:**
+   ```js
+   .reduce((sum, t) => sum + (t.amount || 0), 0)
+   ```
+5. **rawDebt Unit:** Nghìn đồng (k), nhân 1000 khi display
+6. **Fallback amount:** `|| 0` nếu transaction thiếu amount
+7. **Avatar Text:** `item.name ? item.name[0] : 'S'` (fallback 'S' nếu thiếu name)
+8. **FlatList keyExtractor:** `item.id.toString()`
+9. **contentContainerStyle:** padding 15
+10. **Empty Component:** Text với textAlign center, color #999
+11. **Realtime Dependency:** `[]` (chỉ setup 1 lần)
+12. **Snapshot Map:** `snapshot.docs.map(doc => doc.data())`
+13. **Color Threshold:** `>= 0` (not just `>`) để 0 cũng màu cam
+14. **Plus Sign Logic:** `item.currentDebt > 0 ? '+' : ''` (0 không có dấu +)
+15. **Phone Display:** fontSize 12, color #999
+
+## 🔍 TRANSACTION TYPES
+
+### DEBT (Nợ)
+- **Khi nào:** Shipper giao đơn COD xong
+- **amount:** Dương (VD: +5k)
+- **Nghĩa:** Shipper nợ admin số tiền này
+- **Tạo bởi:** system (auto khi complete order)
+
+### PAYMENT (Nộp tiền)
+- **Khi nào:** Admin ghi nhận shipper đã nộp tiền
+- **amount:** Âm (VD: -100k)
+- **Nghĩa:** Shipper đã trả nợ cho admin
+- **Tạo bởi:** admin (manual trong detail page)
+
+### REFUND (Bù tiền)
+- **Khi nào:** Admin bù tiền cho shipper (discount lớn hơn adminShare)
+- **amount:** Âm (VD: -2k)
+- **Nghĩa:** Admin nợ shipper
+- **Tạo bởi:** system (auto khi discount > adminShare)
+
+## 💰 VÍ DỤ TÍNH TOÁN
+
+**Shipper A:**
+- Transaction 1: +15k (DEBT - giao đơn 1)
+- Transaction 2: +8k (DEBT - giao đơn 2)
+- Transaction 3: -20k (PAYMENT - nộp tiền)
+- Transaction 4: +5k (DEBT - giao đơn 3)
+- **Tổng:** 15 + 8 - 20 + 5 = **+8k**
+- **Hiển thị:** "+8,000đ" màu cam (Shipper nợ Admin)
+
+**Shipper B:**
+- Transaction 1: +10k (DEBT)
+- Transaction 2: -2k (REFUND - admin bù)
+- Transaction 3: -15k (PAYMENT - nộp tiền)
+- **Tổng:** 10 - 2 - 15 = **-7k**
+- **Hiển thị:** "-7,000đ" màu xanh (Admin nợ shipper)

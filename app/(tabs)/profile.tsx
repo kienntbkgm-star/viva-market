@@ -1,19 +1,20 @@
 // @ts-nocheck
 import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { MyInput } from '../../src/components/MyUI';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
 
 export default function ProfileScreen() {
-    const { currentUser, isGuest, guestId, logout, updateProfile, foods, toggleFoodStatus } = useAppStore();
+    const { currentUser, logout, updateProfile, foods, toggleFoodStatus, ensureShipperReadyFresh, setShipperReadyToday, setShipperNotReady } = useAppStore();
     const router = useRouter();
 
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState(currentUser?.name || '');
     const [address, setAddress] = useState(currentUser?.address || '');
+    const [readyLoading, setReadyLoading] = useState(false);
 
     // CHECK ROLE - Guest check bằng password trống
     const isGuestUser = currentUser && !currentUser.password;
@@ -23,11 +24,28 @@ export default function ProfileScreen() {
 
     const myFoods = foods.filter(f => f.shopId === currentUser?.id);
 
+    useEffect(() => {
+        if (isShipper || isShopOwner) {
+            ensureShipperReadyFresh();
+        }
+    }, [isShipper]);
+
     const handleToggleFood = async (food) => {
         const result = await toggleFoodStatus(food.id, food.status);
         if (!result.success) {
             console.log("Lỗi cập nhật trạng thái");
         }
+    };
+
+    const handleToggleReady = async () => {
+        setReadyLoading(true);
+        await ensureShipperReadyFresh(); // Đồng bộ trạng thái trước khi thao tác
+        const action = currentUser?.isReady ? setShipperNotReady : setShipperReadyToday;
+        const result = await action();
+        if (!result?.success) {
+            console.log('Cập nhật trạng thái sẵn sàng thất bại');
+        }
+        setReadyLoading(false);
     };
 
     const handleSaveProfile = async () => {
@@ -85,7 +103,7 @@ export default function ProfileScreen() {
                 <View style={styles.card}>
                     <View style={styles.cardHeader}>
                         <Text style={styles.cardTitle}>Thông tin cá nhân</Text>
-                        {!isGuest && (
+                        {!isGuestUser && (
                             <TouchableOpacity onPress={() => isEditing ? handleSaveProfile() : setIsEditing(true)}>
                                 <Text style={styles.editLink}>{isEditing ? "LƯU" : "SỬA"}</Text>
                             </TouchableOpacity>
@@ -102,13 +120,13 @@ export default function ProfileScreen() {
                             <View style={styles.infoRow}>
                                 <Ionicons name="person-outline" size={16} color="#666" />
                                 <Text style={styles.infoText}>
-                                    {isGuest ? "Chưa có thông tin" : currentUser?.name}
+                                    {isGuestUser ? "Chưa có thông tin" : currentUser?.name}
                                 </Text>
                             </View>
                             <View style={styles.infoRow}>
                                 <Ionicons name="location-outline" size={16} color="#666" />
                                 <Text style={styles.infoText}>
-                                    {isGuest ? "Vui lòng nhập khi đặt hàng" : (currentUser?.address || 'Chưa cập nhật địa chỉ')}
+                                    {isGuestUser ? "Vui lòng nhập khi đặt hàng" : (currentUser?.address || 'Chưa cập nhật địa chỉ')}
                                 </Text>
                             </View>
                         </View>
@@ -157,6 +175,24 @@ export default function ProfileScreen() {
                          <View style={styles.cardHeader}>
                             <Text style={styles.cardTitle}>Góc Shipper</Text>
                         </View>
+                        <View style={styles.readyRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.menuTitle}>Trạng thái sẵn sàng hôm nay</Text>
+                                <Text style={[styles.menuSub, { color: currentUser?.isReady ? '#2E7D32' : '#999' }]}>
+                                    {currentUser?.isReady ? '✅ Đang nhận đơn' : '⏸️ Chưa bật'}
+                                </Text>
+                                {currentUser?.readyDate && (
+                                    <Text style={styles.menuSub}>Ngày: {currentUser?.readyDate}</Text>
+                                )}
+                            </View>
+                            <Switch
+                                trackColor={{ false: "#E0E0E0", true: "#81C784" }}
+                                thumbColor={currentUser?.isReady ? "#2E7D32" : "#9E9E9E"}
+                                onValueChange={handleToggleReady}
+                                value={currentUser?.isReady || false}
+                                disabled={readyLoading}
+                            />
+                        </View>
                         <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/shipper/finance')}>
                             <View style={styles.menuIconBox}>
                                 <MaterialCommunityIcons name="wallet-outline" size={22} color="#E67E22" />
@@ -170,7 +206,48 @@ export default function ProfileScreen() {
                     </View>
                 )}
 
-                {/* 5. QUẢN LÝ THỰC ĐƠN (Chủ shop hoặc Admin) */}
+                {/* 5. QUẢN LÝ ĐỐN HÀNG (Chủ shop hoặc Admin) */}
+                {isShopOwner && (
+                    <View style={[styles.card, { marginTop: 15, borderLeftWidth: 4, borderLeftColor: COLORS.primary }]}>
+                        <View style={styles.cardHeader}>
+                            <Text style={styles.cardTitle}>Góc Chủ Shop</Text>
+                        </View>
+                        
+                        {/* Trạng thái sẵn sàng */}
+                        <View style={styles.readyRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.menuTitle}>Trạng thái sẵn sàng hôm nay</Text>
+                                <Text style={[styles.menuSub, { color: currentUser?.isReady ? '#2E7D32' : '#999' }]}>
+                                    {currentUser?.isReady ? '✅ Đang nhận đơn' : '⏸️ Chưa bật'}
+                                </Text>
+                                {currentUser?.readyDate && (
+                                    <Text style={styles.menuSub}>Ngày: {currentUser?.readyDate}</Text>
+                                )}
+                            </View>
+                            <Switch
+                                trackColor={{ false: "#E0E0E0", true: "#81C784" }}
+                                thumbColor={currentUser?.isReady ? "#2E7D32" : "#9E9E9E"}
+                                onValueChange={handleToggleReady}
+                                value={currentUser?.isReady || false}
+                                disabled={readyLoading}
+                            />
+                        </View>
+
+                        {/* Quản lý đơn hàng */}
+                        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/shop/orders')}>
+                            <View style={[styles.menuIconBox, { backgroundColor: '#FFF4E5' }]}>
+                                <MaterialCommunityIcons name="receipt-text-outline" size={22} color={COLORS.primary} />
+                            </View>
+                            <View style={{ flex: 1, marginLeft: 12 }}>
+                                <Text style={styles.menuTitle}>Quản lý đơn hàng</Text>
+                                <Text style={styles.menuSub}>Xem và xử lý đơn hàng của shop bạn</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={20} color="#CCC" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+
+                {/* 6. QUẢN LÝ THỰC ĐƠN (Chủ shop hoặc Admin) */}
                 {isShopOwner && (
                     <View style={[styles.card, { marginTop: 15 }]}>
                         <View style={styles.cardHeader}>
@@ -217,16 +294,16 @@ export default function ProfileScreen() {
                 )}
 
                 <TouchableOpacity 
-                    style={[styles.logoutBtn, isGuest && { backgroundColor: '#E8F5E9' }]} 
+                    style={[styles.logoutBtn, isGuestUser && { backgroundColor: '#E8F5E9' }]} 
                     onPress={handleAuthAction}
                 >
                     <Ionicons 
-                        name={isGuest ? "log-in-outline" : "log-out-outline"} 
+                        name={isGuestUser ? "log-in-outline" : "log-out-outline"} 
                         size={20} 
-                        color={isGuest ? "#2E7D32" : "#FF4747"} 
+                        color={isGuestUser ? "#2E7D32" : "#FF4747"} 
                     />
-                    <Text style={[styles.logoutText, isGuest && { color: '#2E7D32' }]}>
-                        {isGuest ? "ĐĂNG NHẬP NGAY" : "ĐĂNG XUẤT"}
+                    <Text style={[styles.logoutText, isGuestUser && { color: '#2E7D32' }]}>
+                        {isGuestUser ? "ĐĂNG NHẬP NGAY" : "ĐĂNG XUẤT"}
                     </Text>
                 </TouchableOpacity>
 
@@ -257,6 +334,9 @@ const styles = StyleSheet.create({
     menuIconBox: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFF4E5', justifyContent: 'center', alignItems: 'center' },
     menuTitle: { fontSize: 14, fontWeight: '600', color: '#333' },
     menuSub: { fontSize: 11, color: '#999', marginTop: 2 },
+    readyRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    readyButton: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#FFE0B2', borderWidth: 1, borderColor: '#E67E22' },
+    readyButtonText: { fontSize: 12, fontWeight: '700', color: '#E67E22' },
     foodRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderColor: '#f0f0f0' },
     foodImage: { width: 50, height: 50, borderRadius: 8, marginRight: 10 },
     foodName: { fontSize: 14, fontWeight: '500' },

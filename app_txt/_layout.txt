@@ -1,0 +1,970 @@
+# TÓM TẮT LOGIC TRANG APP/_LAYOUT.TSX
+
+## 🎯 MỤC ĐÍCH
+Root layout của toàn bộ app:
+- Setup Stack navigation cho tất cả màn hình
+- Theo dõi app state (active/background/inactive)
+- Log online/offline của user
+- Detect crash khi restart app
+- Responsive web layout (PC vs Mobile browser)
+- Check shipper ready status
+
+## 📊 STATE & DATA
+
+**App Store:**
+```js
+const { 
+  currentUser,           // User đang đăng nhập
+  markUserOnline,        // Function set online
+  markUserOffline        // Function set offline
+} = useAppStore();
+```
+
+**Local State:**
+```js
+mounted: boolean          // Flag để tránh log duplicate lúc mount
+appState: useRef('active') // AppState ref (active, background, inactive)
+```
+
+**Window Dimensions (Web only):**
+```js
+const [windowDimensions, setWindowDimensions] = useState({
+  width: window.innerWidth,
+  height: window.innerHeight
+});
+```
+
+**Platform Detection (Web only):**
+```js
+const isMobileBrowser = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
+  .test(navigator.userAgent);
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Mount Effect (Initial Setup)
+```js
+useEffect(() => {
+  // 1. Check crash on restart
+  checkCrashOnRestart();
+  
+  // 2. Check shipper ready status (nếu là shipper)
+  ensureShipperReadyFresh();
+  
+  // 3. Log user online
+  if (currentUser) {
+    logOnlineToLocal();
+  }
+  
+  // 4. Listen to AppState changes
+  const subscription = AppState.addEventListener('change', handleAppStateChange);
+  
+  // 5. Listen to window resize (Web only)
+  if (Platform.OS === 'web') {
+    window.addEventListener('resize', handleResize);
+  }
+  
+  // 6. Set mounted flag
+  setMounted(true);
+  
+  // 7. Cleanup
+  return () => {
+    subscription.remove();
+    if (currentUser) {
+      logOfflineAndUpload(); // Upload logs khi unmount
+    }
+    if (Platform.OS === 'web') {
+      window.removeEventListener('resize', handleResize);
+    }
+  };
+}, [currentUser]);
+```
+
+### 2. Check Crash on Restart
+```js
+const checkCrashOnRestart = async () => {
+  try {
+    // Get last app state từ AsyncStorage
+    const lastState = await AsyncStorage.getItem('lastAppState');
+    
+    if (lastState === 'active') {
+      // App was active → Now restart = Crash detected!
+      console.log('🚨 CRASH DETECTED: App was active before restart');
+      
+      // Log crash event
+      await AsyncStorage.setItem('crashDetected', 'true');
+      await AsyncStorage.setItem('crashTime', new Date().toISOString());
+    }
+    
+    // Set current state = active
+    await AsyncStorage.setItem('lastAppState', 'active');
+    
+  } catch (error) {
+    console.error('Error checking crash:', error);
+  }
+};
+```
+
+### 3. Shipper Ready Check
+```js
+const ensureShipperReadyFresh = async () => {
+  if (!currentUser || currentUser.role !== 'shipper') return;
+  
+  try {
+    // Get shipper doc từ Firestore
+    const shipperDoc = await getDoc(doc(db, 'users', String(currentUser.id)));
+    
+    if (!shipperDoc.exists()) return;
+    
+    const data = shipperDoc.data();
+    const { shipperReady, shipperReadyDate } = data;
+    
+    // Check if ready date is today
+    const today = new Date().toDateString();
+    const readyDate = shipperReadyDate 
+      ? new Date(shipperReadyDate).toDateString() 
+      : null;
+    
+    if (shipperReady && readyDate !== today) {
+      // Ready status from previous day → Reset to false
+      console.log('🔄 Resetting shipper ready (new day)');
+      
+      await updateDoc(doc(db, 'users', String(currentUser.id)), {
+        shipperReady: false,
+        shipperReadyDate: null
+      });
+      
+      // Show alert
+      Alert.alert(
+        "Thông báo",
+        "Trạng thái sẵn sàng đã được reset. Vui lòng xác nhận lại trong tab Shipper.",
+        [{ text: "OK" }]
+      );
+    }
+  } catch (error) {
+    console.error('Error checking shipper ready:', error);
+  }
+};
+```
+
+### 4. App State Change Handler
+```js
+const handleAppStateChange = (nextAppState) => {
+  // Transition: Active → Background/Inactive
+  if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
+    console.log('📴 App going to background');
+    
+    if (currentUser && mounted) {
+      logOfflineAndUpload();
+    }
+    
+    // Save state to AsyncStorage
+    AsyncStorage.setItem('lastAppState', 'background');
+  }
+  
+  // Transition: Background/Inactive → Active
+  if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+    console.log('📱 App coming to foreground');
+    
+    if (currentUser && mounted) {
+      logOnlineToLocal();
+    }
+    
+    // Save state to AsyncStorage
+    AsyncStorage.setItem('lastAppState', 'active');
+  }
+  
+  // Update ref
+  appState.current = nextAppState;
+};
+```
+
+### 5. Online/Offline Logging
+```js
+// Log online (local only, fast)
+const logOnlineToLocal = () => {
+  const timestamp = new Date().toISOString();
+  console.log(`✅ User online at ${timestamp}`);
+  
+  // Store in AsyncStorage (local)
+  const logEntry = {
+    userId: currentUser.id,
+    userName: currentUser.name,
+    status: 'online',
+    timestamp
+  };
+  
+  AsyncStorage.setItem('pendingOnlineLog', JSON.stringify(logEntry));
+  
+  // Also mark in Firestore (optional)
+  markUserOnline(currentUser.id);
+};
+
+// Log offline + upload all logs (heavy operation)
+const logOfflineAndUpload = async () => {
+  const timestamp = new Date().toISOString();
+  console.log(`❌ User offline at ${timestamp}`);
+  
+  try {
+    // 1. Get pending online log
+    const pendingLog = await AsyncStorage.getItem('pendingOnlineLog');
+    
+    if (pendingLog) {
+      const onlineEntry = JSON.parse(pendingLog);
+      
+      // 2. Create session log
+      const sessionLog = {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        onlineTime: onlineEntry.timestamp,
+        offlineTime: timestamp,
+        duration: new Date(timestamp) - new Date(onlineEntry.timestamp) // milliseconds
+      };
+      
+      // 3. Upload to Firestore
+      await addDoc(collection(db, 'onlineLog'), sessionLog);
+      
+      // 4. Clear pending log
+      await AsyncStorage.removeItem('pendingOnlineLog');
+      
+      console.log(`📤 Uploaded session: ${sessionLog.duration}ms`);
+    }
+    
+    // 5. Mark offline in Firestore
+    markUserOffline(currentUser.id);
+    
+  } catch (error) {
+    console.error('Error uploading offline log:', error);
+  }
+};
+```
+
+### 6. Responsive Web Layout
+```js
+// Detect platform & device
+const isWeb = Platform.OS === 'web';
+const isMobileBrowser = isWeb && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i
+  .test(navigator.userAgent);
+
+// Calculate scale for PC
+const scale = useMemo(() => {
+  if (!isWeb || isMobileBrowser) return 1;
+  
+  const { width, height } = windowDimensions;
+  
+  // Phone dimensions: 430 x 932 (iPhone 14 Pro Max)
+  const scaleX = (width - 20) / 430;   // Margin 20px
+  const scaleY = (height - 20) / 932;  // Margin 20px
+  
+  const calculatedScale = Math.min(scaleX, scaleY);
+  
+  // Safety: Min scale 0.4
+  return Math.max(calculatedScale, 0.4);
+}, [windowDimensions, isWeb, isMobileBrowser]);
+
+// Container style based on platform
+const containerStyle = useMemo(() => {
+  // Native: Full screen, no transform
+  if (!isWeb) {
+    return { flex: 1 };
+  }
+  
+  // Mobile browser: Full screen, no transform
+  if (isMobileBrowser) {
+    return {
+      flex: 1,
+      width: '100%',
+      height: '100%'
+    };
+  }
+  
+  // PC browser: Scaled phone frame
+  return {
+    width: 430,
+    height: 932,
+    transform: [{ scale }],
+    transformOrigin: 'top left',
+    margin: 'auto',
+    overflow: 'hidden',
+    border: '2px solid #000',
+    borderRadius: 40
+  };
+}, [isWeb, isMobileBrowser, scale]);
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### checkCrashOnRestart()
+- **Purpose:** Detect if app crashed
+- **Logic:**
+  - If lastAppState = 'active' → Crash
+  - Log crash event to AsyncStorage
+  - Set lastAppState = 'active'
+- **When:** On mount
+
+### ensureShipperReadyFresh()
+- **Purpose:** Reset shipper ready status daily
+- **Logic:**
+  - Check if shipperReadyDate !== today
+  - Reset shipperReady = false
+  - Show alert
+- **When:** On mount (if shipper)
+
+### logOnlineToLocal()
+- **Purpose:** Fast log online to AsyncStorage
+- **Logic:**
+  - Create log entry { userId, userName, status: 'online', timestamp }
+  - Store in AsyncStorage ('pendingOnlineLog')
+  - Mark online in Firestore
+- **When:** App active
+
+### logOfflineAndUpload()
+- **Purpose:** Upload session log to Firestore
+- **Logic:**
+  - Get pending online log
+  - Calculate duration
+  - Upload to Firestore 'onlineLog' collection
+  - Clear pending log
+  - Mark offline in Firestore
+- **When:** App background/unmount
+
+### handleAppStateChange()
+- **Purpose:** Listen to app state transitions
+- **Logic:**
+  - Active → Background: logOfflineAndUpload
+  - Background → Active: logOnlineToLocal
+  - Update AsyncStorage 'lastAppState'
+- **When:** AppState change
+
+### handleResize() (Web only)
+- **Purpose:** Update window dimensions
+- **Logic:**
+  - Get window.innerWidth, window.innerHeight
+  - Update state
+  - Recalculate scale
+- **When:** Window resize event
+
+### calculateScale() (Web PC only)
+- **Purpose:** Scale app to fit PC screen
+- **Formula:**
+  ```js
+  scaleX = (width - 20) / 430
+  scaleY = (height - 20) / 932
+  scale = Math.min(scaleX, scaleY)
+  scale = Math.max(scale, 0.4) // Safety
+  ```
+- **Result:** CSS transform scale
+
+## 🎨 UI CẤU TRÚC
+
+```
+<View style={containerStyle}> (Platform-specific)
+  └─ <Stack> (Expo Router Stack Navigator)
+      ├─ <Stack.Screen name="index" /> (Landing page)
+      ├─ <Stack.Screen name="login" /> (Login page)
+      ├─ <Stack.Screen name="register" /> (Register page)
+      ├─ <Stack.Screen name="ItemDetail" /> (Food detail)
+      ├─ <Stack.Screen name="ServiceDetail" /> (Service detail)
+      ├─ <Stack.Screen name="(tabs)" /> (Tab navigator)
+      ├─ <Stack.Screen name="admin/products" />
+      ├─ <Stack.Screen name="admin/edit-food" />
+      ├─ <Stack.Screen name="admin/services" />
+      ├─ <Stack.Screen name="admin/edit-service" />
+      ├─ <Stack.Screen name="admin/promos" />
+      ├─ <Stack.Screen name="admin/edit-promo" />
+      ├─ <Stack.Screen name="admin/users" />
+      ├─ <Stack.Screen name="admin/edit-user" />
+      ├─ <Stack.Screen name="admin/orders" />
+      ├─ <Stack.Screen name="admin/order-detail" />
+      ├─ <Stack.Screen name="admin/service-order-detail" />
+      ├─ <Stack.Screen name="admin/system-config" />
+      ├─ <Stack.Screen name="admin/finance" />
+      ├─ <Stack.Screen name="admin/activity-tracking" />
+      ├─ <Stack.Screen name="admin/shipper-detail-finance" />
+      ├─ <Stack.Screen name="shipper/finance" />
+      └─ <Stack.Screen name="+not-found" /> (404 page)
+</View>
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### App State Tracking
+1. **States:**
+   - `active`: App in foreground, user interacting
+   - `background`: App in background, not visible
+   - `inactive`: App transitioning (iOS only)
+
+2. **Transitions:**
+   - Active → Background: User press home button / switch app
+   - Background → Active: User reopen app
+   - Active → Inactive → Background: iOS transition
+
+3. **Log Behavior:**
+   - Active: Log online (fast, local)
+   - Background: Log offline (slow, upload to Firestore)
+
+### Crash Detection
+4. **Mechanism:**
+   - AsyncStorage 'lastAppState' = 'active' or 'background'
+   - On mount: Check if 'active' → Crash
+   - If crash: Log to AsyncStorage
+
+5. **Use Cases:**
+   - Debug crash frequency
+   - Analyze crash patterns
+   - Send crash reports to admin
+
+### Shipper Ready Reset
+6. **Daily Reset:**
+   - Shipper ready status valid for 1 day only
+   - At midnight (new day): Auto reset to false
+   - Shipper must re-confirm readiness daily
+
+7. **Why?**
+   - Prevent shipper forgetting to toggle off
+   - Ensure shipper is truly ready each day
+   - Reduce missed orders
+
+### Responsive Web Layout
+8. **3 Layout Modes:**
+   - **Native (iOS/Android):** Full screen, no scale
+   - **Mobile Browser:** Full screen, no scale
+   - **PC Browser:** Scaled phone frame (430x932)
+
+9. **Scale Calculation:**
+   - Target: iPhone 14 Pro Max (430 x 932)
+   - Fit to screen with 20px margin
+   - Maintain aspect ratio
+   - Min scale: 0.4 (safety)
+
+10. **Transform Origin:**
+    - `top left`: Scale from top-left corner
+    - Keeps app in view when scaled
+
+11. **Phone Frame:**
+    - Border: 2px solid black
+    - Border radius: 40px (rounded corners)
+    - Overflow: hidden (clip content)
+
+### Online/Offline Logging
+12. **Two-Phase Logging:**
+    - Phase 1: Online → AsyncStorage (fast, no network)
+    - Phase 2: Offline → Firestore (slow, batch upload)
+
+13. **Session Duration:**
+    - onlineTime: When app active
+    - offlineTime: When app background
+    - duration: offlineTime - onlineTime (milliseconds)
+
+14. **Firestore Collection:**
+    ```js
+    onlineLog: {
+      userId: number,
+      userName: string,
+      onlineTime: ISO string,
+      offlineTime: ISO string,
+      duration: number (ms)
+    }
+    ```
+
+### Platform Detection (Web)
+15. **User Agent Regex:**
+    - `/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i`
+    - Detect mobile browser vs desktop browser
+
+16. **Why Important:**
+    - Mobile browser: Full screen (good UX)
+    - Desktop browser: Scaled phone frame (demo/preview)
+
+### Mounted Flag
+17. **Purpose:** Prevent duplicate logs on mount
+18. **Logic:**
+    - Initial: mounted = false
+    - After first render: mounted = true
+    - Only log if mounted = true
+
+19. **Why?**
+    - useEffect runs twice in React StrictMode (dev)
+    - Avoid double online log
+
+### Window Resize (Web)
+20. **Listener:**
+    - `window.addEventListener('resize', handleResize)`
+    - Update windowDimensions state
+    - Recalculate scale
+
+21. **Debounce (Recommended):**
+    - Resize event fires many times
+    - Should debounce to avoid performance issue
+
+## 🚀 USER JOURNEY
+
+### User - Open app lần đầu
+1. Launch app
+2. _layout mount
+3. checkCrashOnRestart: lastAppState = null → No crash
+4. Set lastAppState = 'active'
+5. logOnlineToLocal: Save to AsyncStorage
+6. markUserOnline: Update Firestore
+7. App ready
+
+### User - Switch to background
+1. User press home button
+2. AppState: active → background
+3. logOfflineAndUpload:
+   - Get pendingOnlineLog
+   - Calculate duration
+   - Upload session to Firestore 'onlineLog'
+   - Clear pendingOnlineLog
+4. markUserOffline: Update Firestore
+5. Set lastAppState = 'background'
+
+### User - Reopen app
+1. User tap app icon
+2. AppState: background → active
+3. logOnlineToLocal: Save new online log
+4. markUserOnline: Update Firestore
+5. Set lastAppState = 'active'
+
+### User - App crash
+1. App active
+2. Crash (unexpected terminate)
+3. lastAppState still = 'active' (not updated)
+4. User reopen app
+5. _layout mount
+6. checkCrashOnRestart: lastAppState = 'active' → CRASH DETECTED
+7. Log crash to AsyncStorage
+8. Set lastAppState = 'active'
+
+### Shipper - Daily ready reset
+1. Yesterday: Shipper set ready = true, date = 2026-01-26
+2. Today: 2026-01-27
+3. Shipper open app
+4. _layout mount
+5. ensureShipperReadyFresh:
+   - Check shipperReadyDate (26) !== today (27)
+   - Reset shipperReady = false
+   - Show alert "Trạng thái sẵn sàng đã được reset"
+6. Shipper go to Shipper tab → Set ready again
+
+### PC User - Open in browser
+1. Open app in Chrome desktop
+2. Platform.OS = 'web'
+3. isMobileBrowser = false
+4. Calculate scale:
+   - Screen: 1920 x 1080
+   - Phone: 430 x 932
+   - scaleX = (1920-20)/430 = 4.4
+   - scaleY = (1080-20)/932 = 1.14
+   - scale = min(4.4, 1.14) = 1.14
+5. Apply transform: scale(1.14)
+6. Show phone frame (430x932, scaled to ~490x1062)
+
+### Mobile Browser User - Open in Safari
+1. Open app in Safari iOS
+2. Platform.OS = 'web'
+3. isMobileBrowser = true (detect iOS)
+4. containerStyle: Full screen, no scale
+5. App fills entire screen (responsive)
+
+## 🔗 NAVIGATION
+
+**Root Layout:** Không navigate, chỉ setup
+
+**Children Navigate TO:**
+- All screens defined in Stack
+
+**Navigation Type:**
+- Expo Router file-based routing
+- Stack navigation (push/pop/replace)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### Expo Router Stack
+1. **File-based Routing:**
+   - `app/index.tsx` → `/`
+   - `app/login.tsx` → `/login`
+   - `app/(tabs)/home.tsx` → `/(tabs)/home`
+   - `app/admin/products.tsx` → `/admin/products`
+
+2. **Stack.Screen:**
+   - `name`: Route name (relative to app/)
+   - `options`: Screen options (header, title, etc.)
+   - `headerShown`: false (all screens in this layout)
+
+### AppState API
+3. **Import:**
+   - `import { AppState } from 'react-native';`
+
+4. **Event Listener:**
+   - `AppState.addEventListener('change', handler)`
+   - Returns subscription object
+
+5. **Remove Listener:**
+   - `subscription.remove()`
+
+### AsyncStorage
+6. **Import:**
+   - `import AsyncStorage from '@react-native-async-storage/async-storage';`
+
+7. **Methods:**
+   - `setItem(key, value)`: Store string
+   - `getItem(key)`: Retrieve string
+   - `removeItem(key)`: Delete key
+
+8. **Data Type:**
+   - Only string
+   - JSON.stringify for objects
+   - JSON.parse to read
+
+### Firestore Operations
+9. **Collection:** `onlineLog`
+10. **Add Document:**
+    ```js
+    await addDoc(collection(db, 'onlineLog'), {
+      userId: number,
+      userName: string,
+      onlineTime: ISO string,
+      offlineTime: ISO string,
+      duration: number
+    });
+    ```
+
+11. **Update User:**
+    ```js
+    await updateDoc(doc(db, 'users', String(userId)), {
+      online: boolean,
+      lastOnline: ISO string
+    });
+    ```
+
+### Platform Detection (Web)
+12. **Check Web:**
+    - `Platform.OS === 'web'`
+
+13. **Check Mobile Browser:**
+    - `navigator.userAgent.match(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i)`
+
+14. **Window API (Web only):**
+    - `window.innerWidth`
+    - `window.innerHeight`
+    - `window.addEventListener('resize', handler)`
+
+### CSS Transform (Web)
+15. **Transform Style:**
+    ```js
+    transform: [{ scale: 1.14 }]
+    ```
+
+16. **Transform Origin:**
+    ```js
+    transformOrigin: 'top left'
+    ```
+
+17. **Border Radius:**
+    ```js
+    borderRadius: 40 // Rounded corners
+    ```
+
+### useMemo Optimization
+18. **scale calculation:**
+    - Recalculate only when windowDimensions change
+    - Avoid re-render performance issue
+
+19. **containerStyle:**
+    - Recalculate only when scale/platform change
+    - Avoid unnecessary style object creation
+
+### useRef for AppState
+20. **Why Ref?**
+    - AppState current value doesn't trigger re-render
+    - Only need value, not reactive
+
+21. **Access:**
+    - `appState.current`
+
+## 🔍 ONLINE LOG EXAMPLES
+
+### Example 1: Normal session
+```js
+{
+  userId: 5,
+  userName: "Lê Văn A",
+  onlineTime: "2026-01-27T10:00:00.000Z",
+  offlineTime: "2026-01-27T10:15:30.000Z",
+  duration: 930000 // 15.5 minutes (ms)
+}
+```
+
+### Example 2: Short session (switch app)
+```js
+{
+  userId: 5,
+  userName: "Lê Văn A",
+  onlineTime: "2026-01-27T11:00:00.000Z",
+  offlineTime: "2026-01-27T11:00:05.000Z",
+  duration: 5000 // 5 seconds
+}
+```
+
+### Example 3: Long session (work shift)
+```js
+{
+  userId: 5,
+  userName: "Lê Văn A",
+  onlineTime: "2026-01-27T08:00:00.000Z",
+  offlineTime: "2026-01-27T17:30:00.000Z",
+  duration: 34200000 // 9.5 hours
+}
+```
+
+## 🚨 EDGE CASES
+
+1. **No CurrentUser:**
+   - Don't log online/offline
+   - Skip shipper ready check
+   - App still works (guest mode)
+
+2. **Crash During Upload:**
+   - pendingOnlineLog still in AsyncStorage
+   - Next open: Upload old log + new log
+   - May create duplicate logs
+
+3. **Network Error on Upload:**
+   - addDoc fails
+   - pendingOnlineLog not cleared
+   - Next background: Try upload again
+
+4. **Very Small Screen (PC):**
+   - scale < 0.4
+   - Force scale = 0.4 (minimum)
+   - App may not fit perfectly
+
+5. **Very Large Screen (PC):**
+   - scale > 2
+   - Phone frame looks huge
+   - No max scale limit (can add)
+
+6. **Multiple Rapid State Changes:**
+   - Active → Background → Active → Background
+   - Multiple log entries created
+   - May cause Firestore write quota issue
+
+7. **Mounted Flag Race:**
+   - If mounted check fails
+   - May log duplicate online
+   - Should use ref instead of state
+
+8. **AsyncStorage Error:**
+   - setItem/getItem throw error
+   - Try/catch prevents crash
+   - But logs may be lost
+
+9. **Shipper Ready Date Parse Error:**
+   - Invalid shipperReadyDate string
+   - new Date(invalid) = Invalid Date
+   - toDateString() = "Invalid Date"
+   - Comparison fails → No reset
+
+10. **Window Resize Storm (Web):**
+    - Resize event fires 100+ times
+    - setState 100+ times
+    - Performance issue
+    - Need debounce
+
+## 📝 SUGGESTED IMPROVEMENTS
+
+### 1. Debounce Window Resize
+```js
+import { debounce } from 'lodash';
+
+const handleResize = debounce(() => {
+  setWindowDimensions({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
+}, 200); // 200ms delay
+```
+
+### 2. Max Scale Limit (PC)
+```js
+const scale = useMemo(() => {
+  if (!isWeb || isMobileBrowser) return 1;
+  
+  const { width, height } = windowDimensions;
+  const scaleX = (width - 20) / 430;
+  const scaleY = (height - 20) / 932;
+  
+  let calculatedScale = Math.min(scaleX, scaleY);
+  
+  // Min 0.4, Max 2.0
+  calculatedScale = Math.max(0.4, Math.min(2.0, calculatedScale));
+  
+  return calculatedScale;
+}, [windowDimensions, isWeb, isMobileBrowser]);
+```
+
+### 3. Retry Upload on Error
+```js
+const logOfflineAndUpload = async (retries = 3) => {
+  try {
+    // ... upload logic
+    await addDoc(collection(db, 'onlineLog'), sessionLog);
+    await AsyncStorage.removeItem('pendingOnlineLog');
+  } catch (error) {
+    console.error('Upload error:', error);
+    
+    if (retries > 0) {
+      console.log(`Retrying... (${retries} left)`);
+      setTimeout(() => logOfflineAndUpload(retries - 1), 1000);
+    } else {
+      console.error('Upload failed after all retries');
+      // Keep pendingOnlineLog for next time
+    }
+  }
+};
+```
+
+### 4. Crash Report to Firestore
+```js
+const reportCrash = async () => {
+  const crashInfo = {
+    userId: currentUser?.id,
+    userName: currentUser?.name,
+    timestamp: new Date().toISOString(),
+    platform: Platform.OS,
+    version: Constants.expoConfig.version,
+    lastAppState: await AsyncStorage.getItem('lastAppState')
+  };
+  
+  await addDoc(collection(db, 'crashReports'), crashInfo);
+};
+
+const checkCrashOnRestart = async () => {
+  const lastState = await AsyncStorage.getItem('lastAppState');
+  
+  if (lastState === 'active') {
+    console.log('🚨 CRASH DETECTED');
+    await reportCrash();
+  }
+  
+  await AsyncStorage.setItem('lastAppState', 'active');
+};
+```
+
+### 5. Session Statistics
+```js
+const calculateSessionStats = (sessions) => {
+  const totalDuration = sessions.reduce((sum, s) => sum + s.duration, 0);
+  const avgDuration = totalDuration / sessions.length;
+  const longestSession = Math.max(...sessions.map(s => s.duration));
+  const shortestSession = Math.min(...sessions.map(s => s.duration));
+  
+  return {
+    count: sessions.length,
+    totalDuration,
+    avgDuration,
+    longestSession,
+    shortestSession
+  };
+};
+```
+
+### 6. Prevent Duplicate Logs
+```js
+const logOnlineToLocal = async () => {
+  const timestamp = new Date().toISOString();
+  
+  // Check if already logged recently (< 1 second)
+  const lastLog = await AsyncStorage.getItem('lastOnlineLog');
+  if (lastLog) {
+    const lastTime = new Date(lastLog);
+    if (new Date(timestamp) - lastTime < 1000) {
+      console.log('Skipping duplicate online log');
+      return;
+    }
+  }
+  
+  await AsyncStorage.setItem('lastOnlineLog', timestamp);
+  await AsyncStorage.setItem('pendingOnlineLog', JSON.stringify({...}));
+};
+```
+
+### 7. Dark Mode Phone Frame
+```js
+const { colorScheme } = useColorScheme();
+
+const frameStyle = useMemo(() => {
+  const borderColor = colorScheme === 'dark' ? '#333' : '#000';
+  const backgroundColor = colorScheme === 'dark' ? '#000' : '#FFF';
+  
+  return {
+    border: `2px solid ${borderColor}`,
+    backgroundColor,
+    ...
+  };
+}, [colorScheme]);
+```
+
+### 8. Landscape Mode Support
+```js
+const orientation = windowDimensions.width > windowDimensions.height 
+  ? 'landscape' 
+  : 'portrait';
+
+const phoneSize = orientation === 'landscape'
+  ? { width: 932, height: 430 } // Rotated
+  : { width: 430, height: 932 };
+
+const scale = useMemo(() => {
+  const scaleX = (width - 20) / phoneSize.width;
+  const scaleY = (height - 20) / phoneSize.height;
+  return Math.min(scaleX, scaleY);
+}, [windowDimensions, orientation]);
+```
+
+### 9. Loading Splash Screen
+```js
+const [isReady, setIsReady] = useState(false);
+
+useEffect(() => {
+  const prepare = async () => {
+    await checkCrashOnRestart();
+    await ensureShipperReadyFresh();
+    setIsReady(true);
+  };
+  
+  prepare();
+}, []);
+
+if (!isReady) {
+  return <SplashScreen />;
+}
+
+return <Stack>...</Stack>;
+```
+
+### 10. Online Users Counter
+```js
+// In admin dashboard
+const [onlineUsers, setOnlineUsers] = useState([]);
+
+useEffect(() => {
+  const q = query(
+    collection(db, 'users'),
+    where('online', '==', true)
+  );
+  
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const users = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    setOnlineUsers(users);
+  });
+  
+  return () => unsubscribe();
+}, []);
+
+<Text>Online: {onlineUsers.length} users</Text>
+```

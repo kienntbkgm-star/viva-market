@@ -1,0 +1,190 @@
+# TÓM TẮT LOGIC TRANG ADMIN.TSX
+
+## 🎯 MỤC ĐÍCH
+Dashboard tổng quan dành cho admin:
+- Hiển thị các chỉ số thống kê đơn hàng food (cancelled, pending, processing, delayed)
+- Hiển thị thống kê shipper sẵn sàng
+- Menu điều hướng đến các trang quản lý:
+  - Món ăn (products)
+  - Đơn hàng (orders)
+  - Người dùng (users)
+  - Hoạt động (activity-tracking)
+  - Tài chính (finance)
+  - Cài đặt (system-config)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `foods`: danh sách món ăn (để đếm activeFoods)
+- `foodOrders`: danh sách đơn hàng food (để tính stats)
+- `users`: danh sách người dùng (để đếm user và shipper)
+- `promos`: danh sách khuyến mãi (không dùng trong page này)
+
+**Computed Values:**
+- `stats`: Object chứa 4 chỉ số đơn hàng
+  - `cancelled`: Số đơn bị hủy
+  - `pending`: Số đơn chờ xác nhận (pending + pendding)
+  - `processing`: Số đơn đang xử lý
+  - `delayed`: Số đơn chậm (>30 phút và chưa hoàn thành/hủy)
+- `activeFoods`: Số món có `status === 'enable'`
+- `totalUsers`: Tổng số người dùng
+- `readyShippers`: Số shipper có `isReady === true`
+- `totalShippers`: Tổng số shipper
+
+## 🔄 LUỒNG THỰC THI
+
+1. **Load dữ liệu:** Lấy foods, foodOrders, users từ store
+2. **Tính toán stats (useMemo):**
+   - Filter foodOrders theo status
+   - Tính delayed dựa vào `createdAt` so với hiện tại
+3. **Render dashboard:**
+   - 4 card stats (2 hàng x 2 cột)
+   - 1 card shipper sẵn sàng (full width)
+   - 6 card menu quản lý
+4. **Nhấn menu card:** Navigate đến path tương ứng
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### Logic đếm đơn Delayed
+```js
+delayed: orders.filter(o => {
+  if (o.status === 'completed' || o.status === 'cancelled') return false;
+  const timeStr = o.createdAt || o.timeCreate;
+  if (!timeStr) return false;
+  
+  const orderTime = new Date(timeStr);
+  const diffInMinutes = (now.getTime() - orderTime.getTime()) / (1000 * 60);
+  return diffInMinutes > 30;
+}).length
+```
+
+### Menu Config
+```js
+const adminMenu = [
+  { id: 'products', title: 'Quản lý Món ăn', subtitle: `${activeFoods} món đang bán`, icon: 'restaurant-menu', color: '#E67E22', path: '/admin/products' },
+  { id: 'orders', title: 'Quản lý Đơn hàng', subtitle: `${stats.pending} đơn chờ duyệt`, icon: 'receipt-long', color: '#3498DB', path: '/admin/orders' },
+  { id: 'users', title: 'Quản lý Người dùng', subtitle: `${totalUsers} tài khoản`, icon: 'people', color: '#9B59B6', path: '/admin/users' },
+  { id: 'activity', title: 'Thống kê Hoạt động', subtitle: `${readyShippers} shippers sẵn sàng`, icon: 'analytics', color: '#16A085', path: '/admin/activity-tracking' },
+  { id: 'finance', title: 'Quản lý Tài chính', subtitle: 'Đối soát công nợ Shipper', icon: 'attach-money', color: '#27AE60', path: '/admin/finance' },
+  { id: 'system', title: 'Cài đặt', subtitle: 'Cấu hình hệ thống', icon: 'settings', color: '#7F8C8D', path: '/admin/system-config' }
+];
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Title: "Quản trị viên"
+  │   ├─ Subtitle: "Hệ thống vận hành chung cư"
+  │   └─ Profile Button (icon person-circle)
+  │
+  └─ ScrollView (padding: 20)
+      ├─ Stats Row 1
+      │   ├─ Card: Bị hủy (border left #E74C3C)
+      │   └─ Card: Pending (border left #F1C40F)
+      │
+      ├─ Stats Row 2
+      │   ├─ Card: Processing (border left #3498DB)
+      │   └─ Card: Đơn chậm >30p (border left #E67E22)
+      │
+      ├─ Stats Row 3
+      │   └─ Card: Shipper sẵn sàng (border left #27AE60, full width)
+      │
+      └─ Menu Cards (6 cards)
+          └─ Each Card:
+              ├─ Icon Circle (màu theo config)
+              ├─ Title + Subtitle
+              └─ Chevron forward
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Food Orders Only:** Stats chỉ tính đơn food, không tính service/good orders
+2. **Pending vs Pendding:** Xử lý cả 2 typo (pending + pendding)
+3. **Delayed Logic:** Đơn >30 phút và chưa completed/cancelled
+4. **Border Left Color Coding:** Mỗi stat card có màu border trái khác nhau
+5. **Icon Circle Background:** `backgroundColor: color + '15'` (15% opacity)
+6. **Profile Button:** Hiển thị nhưng chưa có chức năng (placeholder)
+7. **Dynamic Subtitle:** Subtitle menu card thay đổi theo số liệu thực tế
+8. **Card Elevation:** Tất cả card đều có `elevation: 2` (Android) và `shadowOpacity: 0.05` (iOS)
+9. **No Loading State:** Giả định dữ liệu đã load xong từ index.tsx
+10. **Color Palette:** Sử dụng màu chuẩn Material Design
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào Admin tab (bottom navigation hoặc từ profile)
+2. Xem tổng quan dashboard:
+   - Số đơn bị hủy, pending, processing, chậm
+   - Số shipper sẵn sàng
+3. Nhấn vào menu card để vào trang quản lý cụ thể:
+   - Products: Quản lý món ăn
+   - Orders: Quản lý đơn hàng
+   - Users: Quản lý người dùng
+   - Activity: Thống kê hoạt động
+   - Finance: Đối soát tài chính shipper
+   - System: Cấu hình hệ thống
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/admin/products`
+- `/admin/orders`
+- `/admin/users`
+- `/admin/activity-tracking`
+- `/admin/finance`
+- `/admin/system-config`
+
+**Navigates FROM:**
+- `/profile` (nút "Quản trị hệ thống" - admin only)
+- Bottom tab navigation (nếu có admin tab - chưa rõ logic hiện)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Stats Object Structure:**
+   ```js
+   {
+     cancelled: number,
+     pending: number,
+     processing: number,
+     delayed: number
+   }
+   ```
+2. **useMemo Dependency:** `[foodOrders]` để tính lại stats khi đơn hàng thay đổi
+3. **Time Calculation:**
+   ```js
+   const diffInMinutes = (now.getTime() - orderTime.getTime()) / (1000 * 60);
+   ```
+4. **Filter activeFoods:**
+   ```js
+   foods.filter(f => f.status === 'enable').length
+   ```
+5. **Filter readyShippers:**
+   ```js
+   users.filter(u => u.role === 'shipper' && u.isReady === true).length
+   ```
+6. **Status lowercase:** Luôn chuyển về lowercase trước khi so sánh
+7. **MaterialIcons:** Dùng cho icon menu, Ionicons cho icon khác
+8. **Card Border Radius:** 15 (stats), 20 (menu)
+9. **Header Border Radius:** Bottom left 30, bottom right 30
+10. **Icon Circle Size:** 55x55, borderRadius 18
+11. **Profile Button:** Chưa navigate đi đâu, có thể là placeholder cho tương lai
+12. **Order Time Field:** Ưu tiên `createdAt`, fallback `timeCreate`
+13. **No Error Handling:** Giả định dữ liệu luôn có sẵn
+14. **Shipper Display:** `{readyShippers}/{totalShippers}` format
+15. **Menu Card Gap:** marginBottom 15 giữa các card
+
+## 🔍 SO SÁNH VỚI SHIPPER TAB
+
+**Giống:**
+- Đều hiển thị thống kê tổng quan
+- Đều có navigation đến các trang con
+
+**Khác:**
+- Admin: Stats về tất cả đơn hàng food
+- Admin: Menu điều hướng đến 6 trang quản lý
+- Admin: Không có tabs
+- Shipper: Stats về đơn của shipper cụ thể
+- Shipper: Tabs (available, my_orders, completed)
+- Shipper: Focus vào đơn hàng cá nhân

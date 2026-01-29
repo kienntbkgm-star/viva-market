@@ -4,18 +4,18 @@ import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, increment, updateDoc } from 'firebase/firestore';
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Image,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    Alert,
+    FlatList,
+    Image,
+    Modal,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
@@ -28,7 +28,7 @@ const formatCurrency = (val) => {
 
 export default function CartScreen() {
   const router = useRouter();
-  const { cart, system, promos, currentUser, isGuest, guestId, addToCart, removeFromCart, clearCart, getTotalPrice, users } = useAppStore();
+  const { cart, system, promos, currentUser, addToCart, removeFromCart, clearCart, getTotalPrice, users } = useAppStore();
 
   const [shipType, setShipType] = useState('normal');
   const [appliedPromo, setAppliedPromo] = useState(null);
@@ -129,26 +129,41 @@ export default function CartScreen() {
     try {
       const isGuestUser = currentUser && !currentUser.password;
       const orderId = `FOOD-${Date.now()}`;
+      
+      // Cleanup items - chỉ lưu fields cần thiết
+      const cleanItems = cart.map(item => ({
+        id: item.id,
+        name: item.name,
+        pricePromo: item.pricePromo,
+        priceNormal: item.priceNormal,
+        quantity: item.quantity,
+        shopId: item.shopId,
+        shopName: getShopNameFromId(item.shopId),
+        img: item.img,
+        selectedOptions: item.selectedOptions || [],
+        note: item.note || "",
+        itemStatus: "active"  // Mặc định active, shipper có thể bỏ món sau
+      }));
+      
       const newOrder = {
         orderId: orderId,
-        userId: currentUser ? currentUser.id : guestId, 
+        userId: currentUser ? currentUser.id : Date.now(),
         userName: (isGuestUser || !currentUser) ? gName : currentUser.name,
         userPhone: (isGuestUser || !currentUser) ? gPhone : currentUser.phone,
         address: (isGuestUser || !currentUser) ? gAddress : currentUser.address,
-        items: cart.map(item => ({...item, shopName: getShopNameFromId(item.shopId)})),
-        totalFood: subTotal,
+        items: cleanItems,
         baseShip: baseShipFee,
-        extraStepFee: extraStepFee,
-        shopCount: uniqueShopsCount,
+        multiShopFee: stepPrice,  // Lưu RATE, không phải total
         discount,
-        finalTotal,
         shipType,
         status: 'pending',
         paymentMethod: 'COD',
         createdAt: new Date().toISOString(),
-        isGuest: isGuestUser || !currentUser,
         promoCode: appliedPromo?.code || "",
-        logs: [{ status: 'pending', time: new Date().toISOString(), content: (isGuestUser || !currentUser) ? 'Khách vãng lai đặt hàng' : 'Thành viên đặt hàng' }]
+        logs: [{ 
+          status: 'pending', 
+          time: new Date().toISOString()
+        }]
       };
 
       await addDoc(collection(db, 'foodOrders'), newOrder);
@@ -226,7 +241,7 @@ export default function CartScreen() {
 
       {cart.length > 0 && (
         <ScrollView style={styles.summaryContainer} showsVerticalScrollIndicator={false}>
-          {(currentUser && !currentUser.password || !currentUser) && (
+          {(!currentUser || (currentUser && !currentUser.password)) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Thông tin giao hàng</Text>
               <TextInput style={styles.guestInput} placeholder="Tên người nhận" value={gName} onChangeText={setGName} />

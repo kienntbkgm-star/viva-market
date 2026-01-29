@@ -1,0 +1,220 @@
+# TÓM TẮT LOGIC TRANG ADMIN/ORDERS.TSX
+
+## 🎯 MỤC ĐÍCH
+Giám sát và quản lý tất cả đơn hàng (food + service):
+- Hiển thị đơn hàng food và service trong 1 danh sách
+- Filter theo trạng thái: Chờ nhận, Đang giao, Thành công, Đã hủy
+- Normalize status (xử lý typo "pendding" → "pending")
+- Đếm số đơn pending (hiển thị badge)
+- Navigate đến order-detail hoặc service-order-detail
+
+## 📊 STATE & DATA
+
+**Store:**
+- `foodOrders`: Đơn hàng đồ ăn
+- `serviceOrders`: Đơn hàng dịch vụ
+
+**Local State:**
+- `filterStatus`: 'pending' | 'processing' | 'completed' | 'cancelled'
+
+**Status Mapping:**
+- `pending` / `pendding` → "Chờ nhận" (màu #E67E22 cam)
+- `processing` → "Đang giao" (màu #3498DB xanh dương)
+- `completed` → "Thành công" (màu #27AE60 xanh lá)
+- `cancelled` → "Đã hủy" (màu #E74C3C đỏ)
+
+## 🔄 LUỒNG THỰC THI
+
+### Display Flow
+1. Merge `foodOrders` + `serviceOrders` thành `allOrders`
+2. Mỗi order thêm field `orderType`: 'food' | 'service'
+3. Normalize status của tất cả orders:
+   ```js
+   const normalizeStatus = (status) => {
+     const s = String(status).toLowerCase().trim();
+     return s === 'pendding' ? 'pending' : s;
+   }
+   ```
+4. Filter theo `filterStatus`
+5. Sort theo `createdAt` descending
+6. Render FlatList
+
+### Tab Filter
+1. 4 tabs: Chờ nhận, Đang giao, Thành công, Đã hủy
+2. Nhấn tab → `setFilterStatus(statusId)`
+3. Tab "Chờ nhận" hiển thị số lượng: `(X)`
+
+### Navigate Detail
+1. Nhấn order card
+2. Check `orderType`:
+   - `service` → `/admin/service-order-detail`
+   - `food` → `/admin/order-detail`
+3. Pass `orderId` params
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `normalizeStatus(status)`
+Chuẩn hóa status (fix typo):
+```js
+const normalizeStatus = (status: any) => {
+  if (!status) return 'pending';
+  const s = String(status).toLowerCase().trim();
+  return s === 'pendding' ? 'pending' : s;
+};
+```
+
+### `getPendingCount()`
+Đếm số đơn pending (cả food + service):
+```js
+const getPendingCount = () => {
+  let count = 0;
+  
+  foodOrders.forEach(order => {
+    if (normalizeStatus(order.status) === 'pending') count++;
+  });
+  
+  serviceOrders.forEach(order => {
+    if (normalizeStatus(order.status) === 'pending') count++;
+  });
+  
+  return count;
+};
+```
+
+### `getStatusColor(status)`
+```js
+switch (status) {
+  case 'pending': return '#E67E22';
+  case 'processing': return '#3498DB';
+  case 'completed': return '#27AE60';
+  case 'cancelled': return '#E74C3C';
+  default: return '#7F8C8D';
+}
+```
+
+### Logic merge orders
+```js
+const allOrders = useMemo(() => {
+  const food = foodOrders.map(order => ({ ...order, orderType: 'food' }));
+  const service = serviceOrders.map(order => ({ ...order, orderType: 'service' }));
+  return [...food, ...service];
+}, [foodOrders, serviceOrders]);
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Giám sát đơn hàng"
+  │   └─ Spacer (width: 28)
+  │
+  ├─ Tab Bar (Scrollable)
+  │   ├─ Tab: "Chờ nhận (X)" (active border primary)
+  │   ├─ Tab: "Đang giao"
+  │   ├─ Tab: "Thành công"
+  │   └─ Tab: "Đã hủy"
+  │
+  └─ FlatList (Orders)
+      └─ renderOrderItem: Card
+          ├─ Header: #{orderId} + Status Badge
+          ├─ Customer: userName + userPhone
+          ├─ Address (icon location)
+          └─ Footer: Time + Total Price
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Unified List:** Merge food + service orders thành 1 list
+2. **Status Normalize:** Fix typo "pendding" thành "pending" tự động
+3. **Pending Count:** Chỉ hiển thị số ở tab "Chờ nhận"
+4. **orderType Field:** Thêm vào để phân biệt khi navigate
+5. **Navigate Logic:**
+   ```js
+   if (item.orderType === 'service') {
+     router.push({ pathname: '/admin/service-order-detail', params: { orderId } });
+   } else {
+     router.push({ pathname: '/admin/order-detail', params: { orderId } });
+   }
+   ```
+6. **Time Display:** Ưu tiên `timeCreate`, fallback `createdAt.toLocaleTimeString()`
+7. **Total Price:** Ưu tiên `finalTotal`, fallback `value?.total`
+8. **Empty State:** Icon receipt + "Không có đơn hàng nào"
+9. **Tab Scroll:** Horizontal scroll nếu nhiều tabs
+10. **Active Tab:** Border bottom primary color
+11. **Status Badge:** Background màu theo status, text trắng
+12. **Card Elevation:** 3 (Android shadow)
+13. **Address Truncate:** `numberOfLines={1}`
+14. **orderId Display:** `#{String(orderId || id)}`
+15. **Lowercase Comparison:** Luôn lowercase status trước khi so sánh
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào Admin Orders từ dashboard
+2. Mặc định tab "Chờ nhận" (pending)
+3. Xem số lượng đơn chờ xử lý
+4. Chuyển tab để xem các trạng thái khác
+5. Nhấn card để xem chi tiết:
+   - Food order → order-detail page
+   - Service order → service-order-detail page
+6. Quay lại dashboard
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/admin/order-detail` (food orders)
+- `/admin/service-order-detail` (service orders)
+
+**Navigates FROM:**
+- Admin dashboard menu "Quản lý Đơn hàng"
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Status Typo:** "pendding" là typo phổ biến trong DB, cần normalize
+2. **useMemo Dependencies:** `[foodOrders, serviceOrders]` để tránh re-render
+3. **Filter Logic:**
+   ```js
+   .filter(order => normalizeStatus(order.status) === filterStatus)
+   ```
+4. **Sort Logic:**
+   ```js
+   .sort((a, b) => new Date(b.createdAt || b.timeCreate || 0) - new Date(a.createdAt || a.timeCreate || 0))
+   ```
+5. **Time Fields:** `createdAt` (ISO) hoặc `timeCreate` (string formatted)
+6. **Total Fields:** `finalTotal` (food) hoặc `value.total` (service)
+7. **keyExtractor:** `String(item.orderId || item.id)` để ensure string
+8. **Tab Label Format:** Only pending tab has count badge
+9. **Status List Config:**
+   ```js
+   const statusList = [
+     { id: 'pending', label: 'Chờ nhận' },
+     { id: 'processing', label: 'Đang giao' },
+     { id: 'completed', label: 'Thành công' },
+     { id: 'cancelled', label: 'Đã hủy' }
+   ];
+   ```
+10. **Empty userName:** Fallback "Khách hàng" nếu thiếu
+11. **Empty address:** Fallback "Chưa có địa chỉ"
+12. **Badge Style:** paddingHorizontal 8, paddingVertical 3, fontSize 10
+13. **Tab Height:** 55px fixed
+14. **contentContainerStyle:** padding 15, paddingBottom 50
+15. **Header Spacing:** justifyContent space-between với spacer width 28
+
+## 🔍 SO SÁNH VỚI USER ORDERS PAGE
+
+**Giống:**
+- Cùng hiển thị order list
+- Cùng có status filter
+- Cùng navigate detail
+
+**Khác:**
+- Admin: Xem TẤT CẢ đơn (food + service)
+- Admin: Không có nút Hủy
+- Admin: Navigate cả food + service detail
+- Admin: Có số lượng pending badge
+- User: Chỉ xem đơn của mình
+- User: Có nút Hủy đơn pending
+- User: Chỉ xem food orders
+- User: Hiển thị log hành trình

@@ -1,4 +1,3 @@
-// FILE: app/(tabs)/admin.tsx
 // @ts-nocheck
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -9,40 +8,31 @@ import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  // Lấy thêm services từ store để đếm số liệu
-  const { foods, foodOrders, serviceOrders, users, promos, services } = useAppStore();
+  const { foods, foodOrders, serviceOrders, users, promos } = useAppStore();
 
-  // --- LOGIC THỐNG KÊ DASHBOARD (GIỮ NGUYÊN CẤU TRÚC CŨ) ---
+  // --- LOGIC THỐNG KÊ DASHBOARD (BAO GỒM FOOD + SERVICE ORDERS) ---
   const stats = useMemo(() => {
-    const orders = foodOrders || [];
-    const sOrders = serviceOrders || [];
+    const allOrders = [...(foodOrders || []), ...(serviceOrders || [])];
     const now = new Date();
-    const todayStr = now.toDateString();
-
-    const foodRevenue = orders.filter(o => o.status === 'completed').reduce((acc, o) => acc + ((o.finalTotal || 0) * 1000), 0);
-    const serviceRevenue = sOrders.filter(o => o.status === 'completed').reduce((acc, o) => acc + (o.price || 0), 0);
-    
-    const todayOrdersCount = orders.filter(o => {
-        const d = o.createdAt || o.timeCreate;
-        return d && new Date(d).toDateString() === todayStr;
-    }).length + sOrders.filter(o => {
-        const d = o.createdAt || o.timeCreate;
-        return d && new Date(d).toDateString() === todayStr;
-    }).length;
 
     return {
-      revenue: foodRevenue + serviceRevenue,
-      todayOrders: todayOrdersCount,
-      cancelled: orders.filter(o => o.status === 'cancelled').length,
-      pending: orders.filter(o => 
-        o.status?.toLowerCase() === 'pending' || 
-        o.status?.toLowerCase() === 'pendding'
-      ).length + sOrders.filter(o => 
+      // 1. Tổng số đơn hàng
+      total: allOrders.length,
+      
+      // 2. Số đơn bị hủy
+      cancelled: allOrders.filter(o => o.status === 'cancelled').length,
+      
+      // 3. Số đơn đang chờ (Tính cả pending và pendding)
+      pending: allOrders.filter(o => 
         o.status?.toLowerCase() === 'pending' || 
         o.status?.toLowerCase() === 'pendding'
       ).length,
-      processing: orders.filter(o => o.status === 'processing').length,
-      delayed: orders.filter(o => {
+      
+      // 4. Số đơn đang xử lý
+      processing: allOrders.filter(o => o.status === 'processing').length,
+      
+      // 5. Số đơn bị chậm (>30p và chưa hoàn thành/hủy)
+      delayed: allOrders.filter(o => {
         if (o.status === 'completed' || o.status === 'cancelled') return false;
         const timeStr = o.createdAt || o.timeCreate;
         if (!timeStr) return false;
@@ -51,75 +41,33 @@ export default function AdminDashboard() {
         const diffInMinutes = (now.getTime() - orderTime.getTime()) / (1000 * 60);
         return diffInMinutes > 30;
       }).length,
-      // Đếm tổng số dịch vụ đang có
-      totalServices: services?.length || 0
+      
+      // 6. Phân loại - chỉ đếm pending
+      foodOrderCount: foodOrders?.filter(o => 
+        o.status?.toLowerCase() === 'pending' || 
+        o.status?.toLowerCase() === 'pendding'
+      ).length || 0,
+      serviceOrderCount: serviceOrders?.filter(o => 
+        o.status?.toLowerCase() === 'pending' || 
+        o.status?.toLowerCase() === 'pendding'
+      ).length || 0
     };
-  }, [foodOrders, serviceOrders, services]);
+  }, [foodOrders, serviceOrders]);
 
   const activeFoods = foods.filter(f => f.status === 'enable').length;
   const totalUsers = users.length;
-  const activePromos = promos ? promos.filter(p => p.enable).length : 0;
+  const readyShippers = users.filter(u => u.role === 'shipper' && u.isReady === true).length;
+  const totalShippers = users.filter(u => u.role === 'shipper').length;
 
-  // DANH SÁCH MENU ADMIN (CHÈN THÊM QUẢN LÝ DỊCH VỤ VÀO ĐÚNG VỊ TRÍ)
   const adminMenu = [
-    { 
-      id: 'products', 
-      title: 'Quản lý Món ăn', 
-      subtitle: `${activeFoods} món đang bán`, 
-      icon: 'restaurant-menu', 
-      color: '#E67E22', 
-      path: '/admin/products' 
-    },
-    { 
-      id: 'orders', 
-      title: 'Quản lý Đơn hàng', 
-      subtitle: `${stats.pending} đơn chờ duyệt`, 
-      icon: 'receipt-long', 
-      color: '#3498DB', 
-      path: '/admin/orders' 
-    },
-    // --- MỚI THÊM: QUẢN LÝ DỊCH VỤ ---
-    { 
-      id: 'services', 
-      title: 'Quản lý Dịch vụ', 
-      subtitle: `${stats.totalServices} dịch vụ hệ thống`, 
-      icon: 'build', // Icon cái búa/sửa chữa
-      color: '#27AE60', // Màu xanh lá
-      path: '/admin/services' 
-    },
-    // -------------------------------------
-    { 
-      id: 'promos', 
-      title: 'Quản lý Khuyến mãi', 
-      subtitle: `${activePromos} mã đang chạy`, 
-      icon: 'local-offer', 
-      color: '#E91E63', 
-      path: '/admin/promos' 
-    },
-    { 
-      id: 'users', 
-      title: 'Quản lý Người dùng', 
-      subtitle: `${totalUsers} tài khoản`, 
-      icon: 'people', 
-      color: '#9B59B6', 
-      path: '/admin/users' 
-    },
-    { 
-      id: 'finance', 
-      title: 'Quản lý Tài chính', 
-      subtitle: 'Đối soát công nợ Shipper', 
-      icon: 'attach-money', 
-      color: '#27AE60', 
-      path: '/admin/finance' 
-    },
-    { 
-      id: 'system', 
-      title: 'Cài đặt', 
-      subtitle: 'Cấu hình hệ thống', 
-      icon: 'settings', 
-      color: '#7F8C8D', 
-      path: '/admin/system-config' 
-    }
+    { id: 'products', title: 'Quản lý Món ăn', subtitle: `${activeFoods} món đang bán`, icon: 'restaurant-menu', color: '#E67E22', path: '/admin/products' },
+    { id: 'services', title: 'Quản lý Dịch vụ', subtitle: 'Danh sách dịch vụ', icon: 'build', color: '#9B59B6', path: '/admin/services' },
+    { id: 'food-orders', title: 'Đơn Món ăn', subtitle: `${stats.foodOrderCount} đơn mới`, icon: 'restaurant', color: '#E67E22', path: '/admin/orders' },
+    { id: 'service-orders', title: 'Đơn Dịch vụ', subtitle: `${stats.serviceOrderCount} đơn mới`, icon: 'home-repair-service', color: '#9B59B6', path: '/admin/service-orders' },
+    { id: 'users', title: 'Quản lý Người dùng', subtitle: `${totalUsers} tài khoản`, icon: 'people', color: '#16A085', path: '/admin/users' },
+    { id: 'activity', title: 'Thống kê Hoạt động', subtitle: `${readyShippers} shippers sẵn sàng`, icon: 'analytics', color: '#1ABC9C', path: '/admin/activity-tracking' },
+    { id: 'finance', title: 'Quản lý Tài chính', subtitle: 'Đối soát công nợ Shipper', icon: 'attach-money', color: '#27AE60', path: '/admin/finance' },
+    { id: 'system', title: 'Cài đặt', subtitle: 'Cấu hình hệ thống', icon: 'settings', color: '#7F8C8D', path: '/admin/system-config' }
   ];
 
   return (
@@ -135,15 +83,26 @@ export default function AdminDashboard() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20 }}>
-        {/* GIỮ NGUYÊN TẦNG DASHBOARD STATS 2x2 CỦA BẠN */}
+        {/* TẦNG DASHBOARD STATS */}
         <View style={styles.statsRow}>
-          <View style={[styles.statsCard, { borderLeftColor: '#27AE60' }]}>
-            <Text style={styles.statsValue}>{stats.revenue.toLocaleString()}đ</Text>
-            <Text style={styles.statsLabel}>Doanh thu tổng</Text>
+          <View style={[styles.statsCard, { borderLeftColor: '#3498DB' }]}>
+            <Text style={styles.statsValue}>{stats.total}</Text>
+            <Text style={styles.statsLabel}>Tổng đơn</Text>
+          </View>
+          <View style={[styles.statsCard, { borderLeftColor: '#F1C40F' }]}>
+            <Text style={styles.statsValue}>{stats.pending}</Text>
+            <Text style={styles.statsLabel}>Chờ duyệt</Text>
+          </View>
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={[styles.statsCard, { borderLeftColor: '#E67E22' }]}>
+            <Text style={styles.statsValue}>{stats.foodOrderCount}</Text>
+            <Text style={styles.statsLabel}>Đơn món ăn</Text>
           </View>
           <View style={[styles.statsCard, { borderLeftColor: '#9B59B6' }]}>
-            <Text style={styles.statsValue}>{stats.todayOrders}</Text>
-            <Text style={styles.statsLabel}>Đơn hôm nay</Text>
+            <Text style={styles.statsValue}>{stats.serviceOrderCount}</Text>
+            <Text style={styles.statsLabel}>Đơn dịch vụ</Text>
           </View>
         </View>
 
@@ -152,20 +111,20 @@ export default function AdminDashboard() {
             <Text style={styles.statsValue}>{stats.cancelled}</Text>
             <Text style={styles.statsLabel}>Bị hủy</Text>
           </View>
-          <View style={[styles.statsCard, { borderLeftColor: '#F1C40F' }]}>
-            <Text style={styles.statsValue}>{stats.pending}</Text>
-            <Text style={styles.statsLabel}>Pending</Text>
+          <View style={[styles.statsCard, { borderLeftColor: '#E67E22' }]}>
+            <Text style={styles.statsValue}>{stats.delayed}</Text>
+            <Text style={styles.statsLabel}>Chậm {'>'}30p</Text>
           </View>
         </View>
 
         <View style={styles.statsRow}>
-          <View style={[styles.statsCard, { borderLeftColor: '#3498DB' }]}>
-            <Text style={styles.statsValue}>{stats.processing}</Text>
-            <Text style={styles.statsLabel}>Processing</Text>
+          <View style={[styles.statsCard, { borderLeftColor: '#27AE60', flex: 1 }]}>
+            <Text style={styles.statsValue}>{readyShippers}/{totalShippers}</Text>
+            <Text style={styles.statsLabel}>Shipper sẵn sàng</Text>
           </View>
         </View>
 
-        {/* DANH SÁCH MENU QUẢN LÝ GIỮ NGUYÊN UI CŨ */}
+        {/* MENU QUẢN LÝ */}
         {adminMenu.map((item) => (
           <TouchableOpacity key={item.id} style={styles.menuCard} onPress={() => router.push(item.path)}>
             <View style={[styles.iconCircle, { backgroundColor: item.color + '15' }]}>

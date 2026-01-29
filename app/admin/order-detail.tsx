@@ -4,15 +4,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { arrayUnion, doc, updateDoc } from 'firebase/firestore';
 import React, { useMemo } from 'react';
 import {
-  Alert,
-  Image,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Image,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
@@ -27,6 +27,38 @@ export default function AdminOrderDetailScreen() {
   const order = useMemo(() => 
     foodOrders.find(o => String(o.orderId) === String(orderId) || String(o.id) === String(orderId))
   , [orderId, foodOrders]);
+
+  // Tính realtime từ items array
+  const orderTotals = useMemo(() => {
+    if (!order || !order.items || order.items.length === 0) {
+      return { totalFood: 0, shopCount: 0, extraStepFee: 0, finalTotal: 0 };
+    }
+    
+    // Filter active items only
+    const activeItems = order.items.filter(item => !item.itemStatus || item.itemStatus === 'active');
+    
+    // Calculate totalFood from active items
+    const totalFood = activeItems.reduce((sum, item) => {
+      const basePrice = item.pricePromo || 0;
+      const optionsPrice = (item.selectedOptions || []).reduce((s, opt) => s + (opt.price || 0), 0);
+      return sum + (basePrice + optionsPrice) * item.quantity;
+    }, 0);
+    
+    // Calculate shop count from active items
+    const shopIds = new Set(activeItems.map(item => item.shopId));
+    const shopCount = shopIds.size;
+    
+    // Calculate extraStepFee from multiShopFee rate
+    const multiShopFee = order.multiShopFee || 0;
+    const extraStepFee = shopCount > 1 ? (shopCount - 1) * multiShopFee : 0;
+    
+    // Calculate finalTotal
+    const baseShip = order.baseShip || 0;
+    const discount = order.discount || 0;
+    const finalTotal = totalFood + baseShip + extraStepFee - discount;
+    
+    return { totalFood, shopCount, extraStepFee, finalTotal };
+  }, [order]);
 
   const shipperInfo = order?.shipperId ? users.find(u => String(u.id) === String(order.shipperId)) : null;
 
@@ -155,16 +187,16 @@ export default function AdminOrderDetailScreen() {
           <Text style={styles.sectionTitle}>CHI TIẾT THANH TOÁN</Text>
           <View style={styles.rowBetween}>
             <Text style={styles.priceLabel}>Tiền món</Text>
-            <Text style={styles.priceVal}>{(order.totalFood * 1000).toLocaleString()}đ</Text>
+            <Text style={styles.priceVal}>{(orderTotals.totalFood * 1000).toLocaleString()}đ</Text>
           </View>
           <View style={styles.rowBetween}>
             <Text style={styles.priceLabel}>Phí vận chuyển gốc</Text>
             <Text style={styles.priceVal}>{(order.baseShip * 1000).toLocaleString()}đ</Text>
           </View>
-          {(order.extraStepFee > 0) && (
+          {(orderTotals.extraStepFee > 0) && (
             <View style={styles.rowBetween}>
-              <Text style={styles.priceLabel}>Phí thêm shop (+{(order.shopIds?.length || 1) - 1} shop)</Text>
-              <Text style={styles.priceVal}>+{(order.extraStepFee * 1000).toLocaleString()}đ</Text>
+              <Text style={styles.priceLabel}>Phí thêm shop (+{orderTotals.shopCount - 1} shop)</Text>
+              <Text style={styles.priceVal}>+{(orderTotals.extraStepFee * 1000).toLocaleString()}đ</Text>
             </View>
           )}
           {(order.discount > 0) && (
@@ -175,7 +207,7 @@ export default function AdminOrderDetailScreen() {
           )}
           <View style={[styles.rowBetween, { marginTop: 10, borderTopWidth: 1, borderColor: '#eee', paddingTop: 10 }]}>
             <Text style={styles.totalLabel}>TỔNG CỘNG</Text>
-            <Text style={styles.totalVal}>{(order.finalTotal * 1000).toLocaleString()}đ</Text>
+            <Text style={styles.totalVal}>{(orderTotals.finalTotal * 1000).toLocaleString()}đ</Text>
           </View>
         </View>
 

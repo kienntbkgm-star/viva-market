@@ -1,0 +1,141 @@
+# TÓM TẮT LOGIC TRANG SERVICES.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang danh sách dịch vụ sửa chữa & dọn dẹp:
+- Hiển thị tất cả dịch vụ từ collection `services`
+- Grid layout 2 cột
+- Nhấn vào card hoặc nút "Đặt ngay" → navigate đến ServiceDetail
+- Hiển thị giá khuyến mãi và giá gốc
+
+## 📊 STATE & DATA
+
+**Store:**
+- `services`: danh sách dịch vụ từ Firestore
+
+**Navigation:**
+- `router`: Expo Router để điều hướng
+
+## 🔄 LUỒNG THỰC THI
+
+1. **Load dữ liệu:** Lấy `services` từ store (đã load trong index.tsx)
+2. **Hiển thị danh sách:** FlatList với `numColumns={2}`
+3. **Nhấn card hoặc nút:** Gọi `handlePressService(item)`
+4. **Navigate:** Push đến `/ServiceDetail` với params `item: JSON.stringify(item)`
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handlePressService(item)`
+Điều hướng đến trang chi tiết dịch vụ:
+```js
+router.push({
+  pathname: '/ServiceDetail',
+  params: { item: JSON.stringify(item) }
+});
+```
+
+### Price Calculation
+```js
+const priceNormal = (item.priceNormal || 0) * 1000;
+const pricePromo = (item.pricePromo || 0) * 1000;
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Title: "Sửa chữa & Dọn dẹp"
+  │   └─ Subtitle: "Dịch vụ tận tâm cho ngôi nhà của bạn"
+  │
+  └─ FlatList (numColumns=2)
+      └─ renderServiceItem: Service Card
+          ├─ Image (120px height)
+          ├─ Card Content
+          │   ├─ Service Name (2 lines, 40px height)
+          │   ├─ Price Row
+          │   │   ├─ Promo Price (bold, primary color)
+          │   │   └─ Old Price (strikethrough, nếu có KM)
+          │   └─ Button: "Đặt ngay"
+          │
+          └─ Empty Component: "Hiện chưa có dịch vụ nào."
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Simple Layout:** Không có filter, search, chỉ hiển thị tất cả
+2. **2-column Grid:** `numColumns={2}` + `columnWrapperStyle`
+3. **Card Width:** `width: '48%'` để 2 card cùng hàng
+4. **Price Comparison:** Chỉ hiện giá gốc nếu `priceNormal > pricePromo`
+5. **Service Name Height:** Fixed 40px để đồng nhất card height
+6. **Button Color:** Background COLORS.primary (#FF6347 hoặc tùy config)
+7. **Empty State:** Text "Hiện chưa có dịch vụ nào." giữa màn hình
+8. **Image Fallback:** `https://via.placeholder.com/150` nếu không có image
+9. **Touchable Areas:** Cả card và button đều trigger navigate (double tap prevention không cần thiết)
+10. **No Loading State:** Giả định services đã load xong từ index.tsx
+
+## 🚀 USER JOURNEY
+
+**Tất cả user (guest, user, admin, shop, shipper):**
+1. Vào Services tab (bottom navigation)
+2. Xem danh sách dịch vụ (grid 2 cột)
+3. Nhấn vào card hoặc nút "Đặt ngay"
+4. Navigate đến ServiceDetail để xem chi tiết và đặt dịch vụ
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/ServiceDetail` (với params item)
+
+**Navigates FROM:**
+- Bottom tab navigation (services tab)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Data Source:** Collection `services` trong Firestore
+2. **Item Structure:**
+   ```js
+   {
+     id: string,
+     name: string,
+     image: string,
+     priceNormal: number (đơn vị: nghìn đồng),
+     pricePromo: number (đơn vị: nghìn đồng),
+     // ... other fields
+   }
+   ```
+3. **Price Display Format:**
+   ```js
+   (price * 1000).toLocaleString('vi-VN') + 'đ'
+   ```
+4. **JSON.stringify():** Cần thiết vì Expo Router params chỉ nhận string
+5. **listPadding:** `paddingBottom: 100` để tránh bottom tab che content
+6. **Card Style:**
+   - `backgroundColor: '#fff'`
+   - `borderRadius: 15`
+   - `elevation: 3` (Android shadow)
+   - `shadowOpacity: 0.1` (iOS shadow)
+7. **No Role Restriction:** Tất cả user đều có thể xem và đặt dịch vụ
+8. **Header Style:**
+   - `padding: 20`
+   - `backgroundColor: '#fff'`
+   - `borderBottomWidth: 1, borderColor: '#eee'`
+9. **numberOfLines:** Service name truncate với `numberOfLines={2}` và `height: 40`
+10. **Button Style:**
+    - `paddingVertical: 8`
+    - `borderRadius: 8`
+    - `marginTop: 12`
+    - `fontSize: 12, fontWeight: 'bold'`
+
+## 🔍 SO SÁNH VỚI HOME.TSX
+
+**Giống:**
+- Grid layout 2 cột
+- Card hiển thị image + name + price
+- Navigate đến detail page
+
+**Khác:**
+- Services: Không có filter, search
+- Services: Button "Đặt ngay" thay vì tap cả card
+- Services: Không có status (enable/disable, hết giờ bán)
+- Services: Không có shop filter (dịch vụ không thuộc shop cụ thể)
+- Services: Đơn giản hơn nhiều (chỉ hiển thị + navigate)

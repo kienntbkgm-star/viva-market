@@ -1,0 +1,126 @@
+# TÓM TẮT LOGIC TRANG INDEX.TSX
+
+## 🎯 MỤC ĐÍCH CHÍNH
+Trang **entry point** của app, vừa là **splash screen** vừa là **debug tool** để xem và backup dữ liệu.
+
+## 📊 DỮ LIỆU QUẢN LÝ
+
+**11 Collections từ Firestore:**
+- system, promos, itemType, foods, goods, services, users
+- foodOrders, goodOrders, serviceOrders, transactions
+
+**State local:**
+- `selectedCollection`: Collection đang xem (mặc định 'system')
+- `isBackingUp`: Trạng thái đang backup
+- `copySuccess` / `copyFullSuccess`: Thông báo copy thành công
+
+## 🔄 LUỒNG THỰC THI
+
+### 1️⃣ **Khi App Khởi Động**
+```
+Component Mount 
+  ↓
+Store tự động load 11 collections từ Firestore (realtime listener)
+  ↓
+Hiển thị loading: "Đang nạp 11 collection từ Firestore..."
+  ↓
+isLoading = false khi load xong
+```
+
+### 2️⃣ **Auto Backup (useEffect)**
+```javascript
+useEffect(() => {
+  if (!isLoading && system && foods.length > 0) {
+    handleFullBackup();  // Tự động backup ngầm
+  }
+}, [isLoading, system, foods]);
+```
+
+**Điều kiện trigger:**
+- ✅ Không còn loading
+- ✅ System có data
+- ✅ Foods có ít nhất 1 món
+
+**Hành động:**
+- PUT request lên JSONBin.io với 11 collections
+- **Chạy ngầm, không thông báo** cho user
+- Chỉ log console
+
+### 3️⃣ **Hiển thị Debug UI**
+Load xong → Hiển thị:
+- **11 nút collection** (horizontal scroll) - mỗi nút có icon, tên, số lượng
+- **JSON viewer** - Xem data của collection đang chọn
+- **2 nút copy**: Copy 1 collection / Copy full DB
+- **2 nút action**: "BACKUP NOW" / "CONTINUE TO APP"
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleNavigateToApp()`
+**Điều hướng khi nhấn "CONTINUE TO APP":**
+```
+1. Gọi restoreSession() - kiểm tra AsyncStorage
+2. Nếu có session → router.replace('/(tabs)/home')
+3. Nếu không → router.replace('/login')
+```
+
+### `handleFullBackup()`
+**Backup 11 collections lên JSONBin.io:**
+- Method: PUT
+- URL: `https://api.jsonbin.io/v3/b/{BIN_ID}`
+- Headers: X-Master-Key, Content-Type
+- Body: JSON object chứa 11 collections
+- **Không alert, chỉ log console**
+
+### `handleCopyToClipboard()` / `handleCopyFullDatabase()`
+**Copy JSON vào clipboard:**
+- Kiểm tra Platform.OS:
+  - Web: `navigator.clipboard.writeText()`
+  - Mobile: `Clipboard.setString()`
+- Hiển thị "✅ Copied!" trong 3 giây
+
+### `getCollectionCount()`
+**Đếm số item trong collection:**
+- Array → return `length`
+- Object → return `Object.keys().length`
+- Else → return `0`
+
+## 🎨 UI LOGIC
+
+### **Khi isLoading = true:**
+- Hiển thị ActivityIndicator
+- Text: "Đang nạp 11 collection từ Firestore..."
+
+### **Khi isLoading = false:**
+1. Collection selector (11 nút với badge số lượng)
+2. Collection header (tên + 2 nút copy)
+3. Copy success message (nếu có, auto hide sau 3s)
+4. JSON viewer (có thể scroll và select text)
+5. Footer với 2 nút action
+
+## ⚙️ ĐIỂM ĐẶC BIỆT
+
+✅ **Không redirect tự động** - User phải nhấn "CONTINUE TO APP"
+✅ **Auto backup ngầm** - Mỗi lần load xong data
+✅ **Realtime sync** - Data từ store tự động update từ Firestore
+✅ **Debug tool** - Dev có thể xem, copy, backup data bất cứ lúc nào
+✅ **Session check** - Điều hướng thông minh dựa vào trạng thái login
+
+## 🚀 USER JOURNEY
+
+```
+Mở app
+  ↓
+Loading... (load 11 collections)
+  ↓
+[Auto backup ngầm chạy]
+  ↓
+Hiển thị debug UI
+  ↓
+User nhấn "CONTINUE TO APP"
+  ↓
+Check session → Home hoặc Login
+```
+
+===============================================================================
+CẬP NHẬT: 27/01/2026
+===============================================================================

@@ -40,9 +40,14 @@ export default function LoginScreen() {
   // CẬP NHẬT: Danh sách đăng nhập nhanh chuẩn theo dataFirebase.txt
   const quickLogins = [
     { label: 'ADMIN', phone: '0931837176', pass: 'Kien1234', color: '#E74C3C' },      // ID 205
-    { label: 'SHIPPER', phone: '0988276552', pass: 'Kien1234', color: '#27AE60' },    // ID 212
-    { label: 'CHỦ SHOP', phone: '0979934882', pass: 'Kien1234', color: '#F1C40F' },   // ID 208 (Thay thế User cũ)
+    { label: 'VINMART', phone: '0838187343', pass: 'Kien1234', color: '#9B59B6' },    // ID 206 - Nguyễn Trường Giang
+    { label: 'BÁCH HÓA XANH', phone: '0385756271', pass: 'Kien1234', color: '#27AE60' }, // ID 207 - Nguyễn Thị Nữ
+    { label: 'GRABFOOD', phone: '0979934882', pass: 'Kien1234', color: '#E67E22' },   // ID 208 - Nguyễn Thị Diễm Phượng
+    { label: 'NOWFOOD', phone: '0988276559', pass: 'Kien1234', color: '#16A085' },    // ID 209 - Nguyễn Văn Dũng
     { label: 'USER', phone: '0931837170', pass: 'Kien1234', color: '#3498DB' },       // ID 213
+    { label: 'SHIPPER 1', phone: '0988276550', pass: 'Kien1234', color: '#1ABC9C' },  // ID 210
+    { label: 'SHIPPER 2', phone: '0988276551', pass: 'Kien1234', color: '#2ECC71' },  // ID 211
+    { label: 'SHIPPER 3', phone: '0988276552', pass: 'Kien1234', color: '#52C9A6' },  // ID 212
   ];
 
   return (

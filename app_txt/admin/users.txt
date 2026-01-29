@@ -1,0 +1,248 @@
+# TÓM TẮT LOGIC TRANG ADMIN/USERS.TSX
+
+## 🎯 MỤC ĐÍCH
+Quản lý danh sách người dùng:
+- Hiển thị tất cả users từ Firestore
+- Tìm kiếm theo tên, SĐT, ID
+- Bật/tắt trạng thái tài khoản (enable/disable)
+- Hiển thị role badge với màu sắc khác nhau
+- **XUẤT Excel** (Export) - Header chuẩn DB
+- **NHẬP Excel** (Import) - Header chuẩn DB
+- Navigate đến edit-user để chỉnh sửa chi tiết
+
+## 📊 STATE & DATA
+
+**Store:**
+- `users`: Danh sách người dùng từ collection `users`
+
+**Local State:**
+- `searchQuery`: Từ khóa tìm kiếm
+- `isProcessing`: Trạng thái đang xử lý import/export
+
+**Excel Structure (Header chuẩn DB):**
+```
+id, uid, name, phone, role, status, address, shopName, password, expoToken, 
+point, imgShop, imgShopSquare, mustCheckIn, checkInDate, index
+```
+
+**Role Colors:**
+- `admin` → #E74C3C (đỏ)
+- `chủ shop` → #E67E22 (cam)
+- `manager` → #3498DB (xanh dương)
+- `shipper` → #9B59B6 (tím)
+- `user` → #7F8C8D (xám)
+
+## 🔄 LUỒNG THỰC THI
+
+### Display Flow
+1. Load `users` từ store
+2. Filter theo searchQuery (tìm trong name, phone, id)
+3. Hiển thị FlatList với user card
+4. Card có avatar (chữ cái đầu), role badge, Switch
+
+### Toggle Status
+1. Nhấn Switch
+2. Gọi `handleToggleUserStatus(userId, currentStatus)`
+3. Toggle `enable ↔ disable`
+4. Update Firestore `users/{userId}`
+
+### Export Excel
+1. Nhấn nút Export
+2. Map users array với tất cả 16 fields
+3. **Lưu ý:** Export cả `password` (plaintext) - cẩn thận bảo mật
+4. Download file: `DB_Users_{timestamp}.xlsx`
+
+### Import Excel
+1. Nhấn nút Import
+2. Parse file
+3. Generate ID nếu thiếu: `Date.now() + random`
+4. Generate uid nếu thiếu: `user_{id}`
+5. Password mặc định: "123456" nếu thiếu
+6. Batch write → Alert success
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleToggleUserStatus(userId, currentStatus)`
+```js
+const newStatus = currentStatus === 'enable' ? 'disable' : 'enable';
+const userRef = doc(db, 'users', userId.toString());
+await updateDoc(userRef, { status: newStatus });
+```
+
+### `getRoleColor(role)`
+```js
+switch (role) {
+  case 'admin': return '#E74C3C';
+  case 'chủ shop': return '#E67E22';
+  case 'manager': return '#3498DB';
+  case 'shipper': return '#9B59B6';
+  default: return '#7F8C8D';
+}
+```
+
+### `handleExportExcel()`
+```js
+const dataToExport = users.map(user => ({
+  id: user.id,
+  uid: user.uid || '',
+  name: user.name,
+  phone: user.phone,
+  role: user.role,
+  status: user.status,
+  address: user.address || '',
+  shopName: user.shopName || '',
+  password: user.password || '', // ⚠️ Plaintext
+  expoToken: user.expoToken || '',
+  point: user.point || 0,
+  imgShop: user.imgShop || '',
+  imgShopSquare: user.imgShopSquare || '',
+  mustCheckIn: user.mustCheckIn || 'disable',
+  checkInDate: user.checkInDate || '',
+  index: user.index || 0
+}));
+```
+
+### `handleImportExcel()`
+```js
+const rawID = row["id"];
+const docId = (rawID && rawID.toString().trim() !== "") 
+  ? rawID.toString() 
+  : Math.floor(Date.now() + Math.random() * 1000).toString();
+
+const payload = {
+  id: Number(docId),
+  uid: row["uid"] || `user_${docId}`,
+  name: row["name"] || "Người dùng mới",
+  phone: row["phone"] || "",
+  role: row["role"] || "user",
+  status: row["status"] || "enable",
+  address: row["address"] || "",
+  shopName: row["shopName"] || "",
+  password: row["password"] || "123456",
+  expoToken: row["expoToken"] || "",
+  point: row["point"] || "",
+  imgShop: row["imgShop"] || "",
+  imgShopSquare: row["imgShopSquare"] || "",
+  mustCheckIn: row["mustCheckIn"] || "disable",
+  checkInDate: row["checkInDate"] || "",
+  index: Number(row["index"]) || 0,
+  log: []
+};
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   ├─ Title: "Quản lý người dùng"
+  │   └─ Button Group
+  │       ├─ Import (#2980B9)
+  │       └─ Export (#27AE60)
+  │
+  ├─ Search Container
+  │   └─ TextInput: "Tìm tên, SĐT hoặc ID..."
+  │
+  └─ FlatList (User Cards)
+      └─ renderUserItem: Card
+          ├─ Avatar (chữ cái đầu, background primary)
+          ├─ Info
+          │   ├─ Row: Name + ID + Role Badge
+          │   ├─ Phone
+          │   ├─ Address
+          │   ├─ Shop Name (nếu có)
+          │   └─ Status Row: Dot + Label + Switch
+          │
+          └─ onPress: Navigate to /admin/edit-user
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Password Export:** Export plaintext password (⚠️ bảo mật thực tế cần mã hóa)
+2. **Role Badge:** Màu sắc theo role (admin/shop/manager/shipper/user)
+3. **Avatar Text:** Chữ cái đầu tên user, uppercase
+4. **Shop Name:** Chỉ hiển thị nếu user có shopName
+5. **Status Indicator:** Dot + Text (Hoạt động/Đã khóa)
+6. **Switch stopPropagation:** Không trigger navigate card
+7. **ID Generation:** Timestamp + random nếu thiếu
+8. **uid Fallback:** `user_{id}` nếu thiếu
+9. **Password Default:** "123456" nếu không có
+10. **log Reset:** Array rỗng khi import
+11. **mustCheckIn:** 'enable' | 'disable' (string)
+12. **checkInDate:** String hoặc rỗng
+13. **point Field:** Số điểm tích lũy (thường rỗng hoặc 0)
+14. **imgShop vs imgShopSquare:** 2 ảnh khác nhau cho shop
+15. **No Add Button:** Không có nút Add (user tự đăng ký)
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào Admin Users từ dashboard
+2. Tìm kiếm user theo tên/SĐT/ID
+3. **Export:** Backup danh sách user (bao gồm password)
+4. **Edit Excel:** Sửa role, status, thông tin
+5. **Import:** Nhập lại hệ thống
+6. **Lock/Unlock:** Toggle Switch để khóa/mở tài khoản
+7. **Edit Detail:** Nhấn card → Edit-user page
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/admin/edit-user` (nhấn card)
+
+**Navigates FROM:**
+- Admin dashboard menu "Quản lý Người dùng"
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **id vs uid:**
+   - `id`: Number, primary key (VD: 123)
+   - `uid`: String, Firebase Auth UID (VD: "user_123")
+2. **password:** Plaintext (không hash) - Cần cải thiện bảo mật thực tế
+3. **role Values:** 'admin', 'chủ shop', 'manager', 'shipper', 'user'
+4. **status Values:** 'enable', 'disable' (string)
+5. **expoToken:** Push notification token (Expo)
+6. **mustCheckIn:** Shop owner có thể bắt buộc check-in
+7. **checkInDate:** Ngày check-in cuối (format string)
+8. **point:** Điểm tích lũy từ đơn hàng (Math.floor(finalTotal / 10))
+9. **imgShop:** Ảnh shop (hình chữ nhật)
+10. **imgShopSquare:** Ảnh shop (hình vuông) - dùng cho badge
+11. **index:** Thứ tự sắp xếp (không dùng trong UI này)
+12. **log Array:** Lịch sử hoạt động (reset khi import)
+13. **Search Case:** Lowercase search, không bỏ dấu
+14. **Filter Query:**
+    ```js
+    user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.phone?.toString().includes(searchQuery) ||
+    user.id?.toString().includes(searchQuery)
+    ```
+15. **numberOfLines:** name: 1, address: 1 để tránh card quá cao
+
+## 🔍 SO SÁNH VỚI PRODUCTS/SERVICES/PROMOS
+
+**Giống:**
+- Import/Export Excel pattern
+- Toggle switch
+- Search bar
+- Navigate edit page
+
+**Khác:**
+- Users: Nhiều field nhất (16 fields)
+- Users: Có password plaintext
+- Users: Có role badge với màu
+- Users: Có avatar với chữ cái
+- Users: Không có Add button (user tự register)
+- Users: Có shop-specific fields (shopName, imgShop)
+- Users: Có check-in fields
+- Users: Có expoToken cho push notification
+
+## ⚠️ BẢO MẬT
+
+**CẢNH BÁO:** 
+- Export password plaintext là RỦI RO bảo mật cao
+- Thực tế nên:
+  1. Hash password trước khi lưu
+  2. Không export password
+  3. Hoặc mã hóa file Excel
+  4. Giới hạn quyền admin download

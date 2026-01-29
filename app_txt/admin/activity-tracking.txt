@@ -1,0 +1,582 @@
+# TÓM TẮT LOGIC TRANG ADMIN/ACTIVITY-TRACKING.TSX
+
+## 🎯 MỤC ĐÍCH
+Dashboard phân tích hoạt động chi tiết:
+- **Tab Shippers:** Theo dõi shipper online, ready, hiệu suất, giờ làm việc, crash detection
+- **Tab All Users:** Thống kê người dùng online, session, thời gian hoạt động, điểm đánh giá
+- Lọc theo thời gian: Hôm nay, Hôm qua, Tuần này, Tháng này
+- Cảnh báo shipper ready nhưng offline
+- Phát hiện crash (shipper mất tích giữa chừng)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `users`: Tất cả người dùng (filter theo role)
+- `allOrders`: Tất cả đơn hàng (lọc theo date range)
+
+**Local State:**
+- `selectedTab`: 'shippers' | 'allUsers'
+- `selectedDateRange`: 'today' | 'yesterday' | 'week' | 'month'
+- `onlineLog`: Realtime log hoạt động từ Firestore
+
+**Realtime Listener:**
+- Query `onlineLog` collection với `onSnapshot`
+
+## 🔄 LUỒNG THỰC THI
+
+### 1. Setup Realtime Listener
+```js
+useEffect(() => {
+  const q = query(collection(db, 'onlineLog'));
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    setOnlineLog(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+  return () => unsubscribe();
+}, []);
+```
+
+### 2. Calculate Date Range
+```js
+const { startTime, endTime } = useMemo(() => {
+  const now = new Date();
+  let start: Date;
+  
+  switch(selectedDateRange) {
+    case 'today':
+      start = new Date(now.setHours(0, 0, 0, 0));
+      break;
+    case 'yesterday':
+      start = new Date(now.setDate(now.getDate() - 1));
+      start.setHours(0, 0, 0, 0);
+      break;
+    case 'week':
+      start = new Date(now.setDate(now.getDate() - 7));
+      break;
+    case 'month':
+      start = new Date(now.setDate(now.getDate() - 30));
+      break;
+  }
+  
+  return {
+    startTime: start.getTime(),
+    endTime: selectedDateRange === 'yesterday' 
+      ? start.getTime() + 24*60*60*1000 
+      : Date.now()
+  };
+}, [selectedDateRange]);
+```
+
+### 3. Filter Orders by Date
+```js
+const filteredOrders = allOrders.filter(order => {
+  const orderTime = new Date(order.createdAt).getTime();
+  return orderTime >= startTime && orderTime < endTime;
+});
+```
+
+### 4. Calculate Shipper Stats
+```js
+const shipperStats = useMemo(() => {
+  const shippers = users.filter(u => u.role === 'shipper');
+  
+  return shippers.map(shipper => {
+    // 1. Tính Online Status (< 5 phút)
+    const lastLog = onlineLog.find(log => log.userId === shipper.id);
+    const isOnline = lastLog && (Date.now() - lastLog.lastOnline < 5 * 60 * 1000);
+    
+    // 2. Parse Log Entries
+    const logs = lastLog?.log || [];
+    const sessions = logs.map(entry => {
+      const [timestamp, duration] = entry.split('-').map(Number);
+      return { timestamp, duration: duration || 0 };
+    });
+    
+    // 3. Filter Sessions by Date Range
+    const relevantSessions = sessions.filter(s => 
+      s.timestamp >= startTime && s.timestamp < endTime
+    );
+    
+    // 4. Tính Total Hours
+    const totalMinutes = relevantSessions.reduce((sum, s) => sum + s.duration, 0);
+    const totalHours = totalMinutes / 60;
+    
+    // 5. Đếm Orders
+    const ordersDelivered = filteredOrders.filter(o => 
+      o.shipperId === shipper.id && o.status === 'completed'
+    ).length;
+    
+    // 6. Tính Efficiency
+    const efficiency = totalHours > 0 ? ordersDelivered / totalHours : 0;
+    
+    // 7. Crash Detection
+    const hasCrash = relevantSessions.some(s => s.duration === 0);
+    
+    return {
+      id: shipper.id,
+      name: shipper.name,
+      isReady: shipper.isReady,
+      isOnline,
+      totalHours: totalHours.toFixed(1),
+      ordersDelivered,
+      efficiency: efficiency.toFixed(2),
+      hasCrash,
+      lastOnline: lastLog?.lastOnline
+    };
+  });
+}, [users, onlineLog, filteredOrders, startTime, endTime]);
+```
+
+### 5. Calculate User Stats
+```js
+const userStats = useMemo(() => {
+  const allUsers = users.filter(u => u.role !== 'shipper');
+  
+  return allUsers.map(user => {
+    const lastLog = onlineLog.find(log => log.userId === user.id);
+    const isOnline = lastLog && (Date.now() - lastLog.lastOnline < 5 * 60 * 1000);
+    
+    const logs = lastLog?.log || [];
+    const sessions = logs.map(entry => {
+      const [timestamp, duration] = entry.split('-').map(Number);
+      return { timestamp, duration: duration || 0 };
+    }).filter(s => s.timestamp >= startTime && s.timestamp < endTime);
+    
+    const totalMinutes = sessions.reduce((sum, s) => sum + s.duration, 0);
+    const totalHours = totalMinutes / 60;
+    const avgSessionDuration = sessions.length > 0 
+      ? totalMinutes / sessions.length 
+      : 0;
+    
+    // Activity Score (0-100)
+    const score = Math.min(100, Math.round((totalHours / 24) * 100));
+    
+    return {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      isOnline,
+      sessions: sessions.length,
+      totalHours: totalHours.toFixed(1),
+      avgSessionDuration: avgSessionDuration.toFixed(0),
+      score
+    };
+  });
+}, [users, onlineLog, startTime, endTime]);
+```
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### parseLogEntry
+```js
+// Log format: "timestamp-duration"
+// VD: "1704124800000-45" = Logged at timestamp, stayed 45 minutes
+const [timestamp, duration] = entry.split('-').map(Number);
+return {
+  timestamp,        // Thời điểm bắt đầu session
+  duration: duration || 0  // Thời lượng (phút), 0 = crash
+};
+```
+
+### isOnline Detection
+```js
+const isOnline = (lastOnlineTimestamp) => {
+  const TIMEOUT = 5 * 60 * 1000; // 5 minutes
+  return Date.now() - lastOnlineTimestamp < TIMEOUT;
+};
+```
+
+### Crash Detection
+```js
+// Duration = 0 nghĩa là app crash (không logout bình thường)
+const hasCrash = sessions.some(s => s.duration === 0);
+```
+
+### Activity Score Calculation
+```js
+// 0-100 dựa trên tổng giờ hoạt động / 24h
+const score = Math.min(100, Math.round((totalHours / 24) * 100));
+```
+
+### Efficiency Calculation
+```js
+// Orders per hour
+const efficiency = totalHours > 0 ? ordersDelivered / totalHours : 0;
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Back Button
+  │   └─ Title: "Activity Tracking"
+  │
+  ├─ Date Range Selector (Row of 4 buttons)
+  │   ├─ Today
+  │   ├─ Yesterday
+  │   ├─ Week
+  │   └─ Month
+  │
+  ├─ Tab Selector (SegmentedControl style)
+  │   ├─ Shippers
+  │   └─ All Users
+  │
+  └─ ScrollView
+      ├─ [IF selectedTab === 'shippers']
+      │   ├─ Summary Cards (Row)
+      │   │   ├─ Ready & Online Count
+      │   │   ├─ Total Orders
+      │   │   └─ Avg Hours
+      │   │
+      │   ├─ Warning Cards (nếu có)
+      │   │   ├─ Offline but Ready (cam)
+      │   │   └─ Crash Detected (đỏ)
+      │   │
+      │   └─ Shipper List (Cards)
+      │       └─ renderShipper: Card
+      │           ├─ Avatar + Online dot
+      │           ├─ Info
+      │           │   ├─ Name + Ready badge
+      │           │   ├─ Hours worked
+      │           │   ├─ Orders delivered
+      │           │   └─ Efficiency
+      │           └─ Crash icon (nếu có)
+      │
+      └─ [IF selectedTab === 'allUsers']
+          ├─ Summary Cards
+          │   ├─ Online Count
+          │   ├─ Total Sessions
+          │   └─ Avg Session Duration
+          │
+          └─ User List (Cards)
+              └─ renderUser: Card
+                  ├─ Avatar + Online dot
+                  ├─ Info
+                  │   ├─ Name + Role badge
+                  │   ├─ Sessions count
+                  │   ├─ Total hours
+                  │   └─ Avg duration
+                  └─ Score Progress Bar
+                      └─ Score number (0-100)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+### Shipper Tab
+1. **Ready & Online Logic:**
+   - isReady = true (shipper bật sẵn sàng)
+   - isOnline = lastOnline < 5 phút
+   - Lý tưởng: Ready + Online
+   - Cảnh báo: Ready nhưng Offline (tắt app/mất mạng)
+
+2. **Crash Detection:**
+   - Log entry với `duration = 0` = crash
+   - Hiển thị icon ⚠️ màu đỏ
+   - Warning card: "X shipper gặp sự cố"
+
+3. **Efficiency Metric:**
+   - Orders / Hours
+   - VD: 10 đơn / 5 giờ = 2.00 đơn/giờ
+   - Màu xanh nếu >= 1.5
+
+4. **Ready Badge:**
+   - Background #4CAF50 nếu isReady
+   - Text "Ready"
+   - fontSize 10
+
+### All Users Tab
+5. **Session Tracking:**
+   - Mỗi lần vào app = 1 session
+   - Tính avg duration per session
+   - Hiển thị số sessions trong date range
+
+6. **Activity Score:**
+   - 0-100 dựa trên totalHours / 24h * 100
+   - Progress bar màu gradient
+   - Text màu dựa trên điểm:
+     - >= 80: #4CAF50 (xanh)
+     - >= 50: #FFA726 (cam)
+     - < 50: #EF5350 (đỏ)
+
+7. **Role Badge:**
+   - admin: #E91E63 (hồng)
+   - shop: #9C27B0 (tím)
+   - user: #2196F3 (xanh dương)
+
+### General
+8. **Online Dot:**
+   - Màu xanh (#4CAF50) nếu online
+   - Màu xám (#BDBDBD) nếu offline
+   - Position absolute, top: 0, right: 0
+
+9. **Date Range Logic:**
+   - Today: 0h đến now
+   - Yesterday: 0h hôm qua đến 0h hôm nay
+   - Week: 7 ngày trước đến now
+   - Month: 30 ngày trước đến now
+
+10. **Realtime Update:**
+    - onlineLog listener auto update
+    - isOnline recalculate mỗi 1s? (không có interval, chỉ re-render khi onlineLog change)
+
+11. **Empty State:**
+    - "Không có shipper nào" / "Không có người dùng nào"
+    - textAlign center, color #999
+
+12. **Summary Cards:**
+    - Background #F5F5F5
+    - borderRadius 10
+    - padding 15
+    - elevation 1
+
+13. **Warning Cards:**
+    - Background #FFF3E0 (cam nhạt) cho offline-ready
+    - Background #FFEBEE (đỏ nhạt) cho crash
+    - borderLeft 4px solid color chủ đạo
+
+14. **useMemo Dependencies:**
+    - shipperStats: [users, onlineLog, filteredOrders, startTime, endTime]
+    - userStats: [users, onlineLog, startTime, endTime]
+    - Optimize để không recalc khi không cần
+
+15. **Avatar Fallback:**
+    - Chữ cái đầu name
+    - Background primary
+    - Circular với borderRadius 25
+
+## 🚀 USER JOURNEY
+
+### Admin - Shipper Tracking
+1. Vào Activity Tracking từ admin dashboard
+2. Chọn date range (Today/Yesterday/Week/Month)
+3. Tab "Shippers" được chọn mặc định
+4. Xem summary: Bao nhiêu ready+online, tổng orders, avg hours
+5. Xem warning cards (nếu có):
+   - Shipper ready nhưng offline → Cần liên hệ
+   - Shipper crash → Cần kiểm tra lỗi app
+6. Scroll danh sách shipper:
+   - Xem từng shipper: giờ làm, orders, efficiency
+   - Nhận biết crash (icon ⚠️ đỏ)
+7. Đánh giá hiệu suất shipper dựa trên efficiency
+
+### Admin - User Tracking
+1. Switch sang tab "All Users"
+2. Xem summary: Số users online, tổng sessions, avg duration
+3. Scroll danh sách users:
+   - Xem ai online (dot xanh)
+   - Xem role badge
+   - Xem activity score (progress bar)
+4. Đánh giá engagement của users:
+   - Score cao = active user
+   - Score thấp = inactive user
+
+## 🔗 NAVIGATION
+
+**Navigates TO:** Không (read-only dashboard)
+
+**Navigates FROM:**
+- Admin dashboard menu "Activity Tracking"
+
+## 💡 LƯU Ý KỸ THUẬT
+
+### OnlineLog Structure
+```js
+{
+  id: string,           // Document ID (userId)
+  userId: string,       // User ID (duplicate)
+  lastOnline: number,   // Timestamp cuối cùng online
+  log: string[],        // Array of "timestamp-duration"
+}
+```
+
+### Log Entry Format
+```
+"1704124800000-45"
+  ├─ 1704124800000: Timestamp bắt đầu session (ms)
+  └─ 45: Duration (minutes)
+
+"1704128400000-0"
+  ├─ 1704128400000: Timestamp crash
+  └─ 0: Duration = 0 (app bị crash, không logout bình thường)
+```
+
+### Online Detection Algorithm
+```js
+const ONLINE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+const isOnline = (lastOnlineTimestamp) => {
+  return Date.now() - lastOnlineTimestamp < ONLINE_TIMEOUT;
+};
+```
+
+Logic:
+- Mỗi khi app active → Update `lastOnline`
+- Nếu `Date.now() - lastOnline < 5 phút` → Online
+- Nếu `>= 5 phút` → Offline
+
+### Crash Detection Logic
+```js
+// Duration = 0 nghĩa là:
+// 1. App bị crash/force close
+// 2. Mất mạng đột ngột
+// 3. Device tắt nguồn
+// → Không kịp gọi logout API để ghi duration
+
+const hasCrash = sessions.some(session => session.duration === 0);
+```
+
+### Date Range Edge Cases
+1. **Yesterday:**
+   - startTime: yesterday 0h
+   - endTime: today 0h
+   - Không bao gồm today data
+
+2. **Today:**
+   - startTime: today 0h
+   - endTime: Date.now()
+   - Bao gồm cả data đang chạy
+
+3. **Week/Month:**
+   - startTime: now - 7/30 days
+   - endTime: now
+   - Rolling window (không theo tuần lịch)
+
+### Performance Optimization
+1. **useMemo for Stats:**
+   - Chỉ recalc khi dependencies thay đổi
+   - Tránh recalc mỗi lần render
+
+2. **Filter Early:**
+   - Filter orders by date trước
+   - Giảm số lần loop trong map
+
+3. **Realtime Listener:**
+   - Chỉ setup 1 lần trong useEffect
+   - Cleanup bằng unsubscribe
+
+### Efficiency Thresholds
+```js
+// Efficiency = orders / hours
+const getEfficiencyColor = (efficiency) => {
+  if (efficiency >= 2.0) return '#4CAF50';  // Xuất sắc
+  if (efficiency >= 1.5) return '#FFA726';  // Tốt
+  if (efficiency >= 1.0) return '#FF9800';  // Trung bình
+  return '#EF5350';                          // Cần cải thiện
+};
+```
+
+### Score Calculation
+```js
+// Activity Score for All Users
+const calculateScore = (totalHours) => {
+  // Max 24h trong 1 ngày = 100 điểm
+  const score = (totalHours / 24) * 100;
+  return Math.min(100, Math.round(score));
+};
+```
+
+### Role Color Map
+```js
+const roleColors = {
+  admin: '#E91E63',    // Pink
+  shop: '#9C27B0',     // Purple
+  shipper: '#FF9800',  // Orange (nhưng tab riêng)
+  user: '#2196F3',     // Blue
+};
+```
+
+### Warning Thresholds
+1. **Offline but Ready:**
+   - `isReady === true && isOnline === false`
+   - Shipper báo sẵn sàng nhưng app offline
+   - Có thể do: tắt app, mất mạng, crash
+
+2. **Crash Detected:**
+   - `hasCrash === true`
+   - Ít nhất 1 session có duration = 0
+   - Cần điều tra lỗi app
+
+### Summary Card Calculations
+```js
+// Shippers Tab
+const readyAndOnlineCount = shipperStats.filter(s => s.isReady && s.isOnline).length;
+const totalOrders = shipperStats.reduce((sum, s) => sum + s.ordersDelivered, 0);
+const avgHours = (shipperStats.reduce((sum, s) => sum + parseFloat(s.totalHours), 0) / shipperStats.length).toFixed(1);
+
+// All Users Tab
+const onlineCount = userStats.filter(u => u.isOnline).length;
+const totalSessions = userStats.reduce((sum, u) => sum + u.sessions, 0);
+const avgSessionDuration = (userStats.reduce((sum, u) => sum + parseFloat(u.avgSessionDuration), 0) / userStats.length).toFixed(0);
+```
+
+## 📊 METRIC DEFINITIONS
+
+### Shipper Metrics
+| Metric | Formula | Ý nghĩa |
+|--------|---------|---------|
+| **Total Hours** | Σ(duration) / 60 | Tổng giờ làm việc trong date range |
+| **Orders Delivered** | Count(orders where status='completed' && shipperId=X) | Số đơn giao thành công |
+| **Efficiency** | Orders Delivered / Total Hours | Đơn/giờ, đánh giá hiệu suất |
+| **Crash Count** | Count(sessions where duration=0) | Số lần crash trong date range |
+| **Ready & Online** | isReady=true && isOnline=true | Shipper sẵn sàng và đang online |
+
+### User Metrics
+| Metric | Formula | Ý nghĩa |
+|--------|---------|---------|
+| **Sessions** | Count(log entries in date range) | Số lần vào app |
+| **Total Hours** | Σ(duration) / 60 | Tổng giờ sử dụng app |
+| **Avg Session Duration** | Total Hours / Sessions | Thời gian trung bình mỗi session |
+| **Activity Score** | (Total Hours / 24) * 100 | Điểm hoạt động (0-100) |
+| **Online Status** | lastOnline < 5min | Đang online hay không |
+
+## 🎯 USE CASES
+
+### 1. Phát hiện Shipper không hoạt động
+- Shipper isReady=true nhưng isOnline=false
+- Admin liên hệ kiểm tra
+
+### 2. Đánh giá Hiệu suất Shipper
+- Efficiency cao (>= 2.0) → Shipper giỏi
+- Efficiency thấp (< 1.0) → Cần training
+
+### 3. Phát hiện Crash App
+- hasCrash=true → Dev team điều tra lỗi
+- Log crash shipper/device để debug
+
+### 4. Theo dõi Engagement User
+- Activity Score cao → Active user
+- Activity Score thấp → Cần chiến dịch marketing
+
+### 5. So sánh Date Range
+- Today vs Yesterday: Tăng/giảm hoạt động
+- Week vs Month: Xu hướng dài hạn
+
+## 🚨 CẢNH BÁO & EDGE CASES
+
+1. **No Log Data:**
+   - User chưa bao giờ online → onlineLog undefined
+   - Fallback: `log = []`, totalHours = 0
+
+2. **Division by Zero:**
+   - totalHours = 0 → efficiency = 0 (không chia)
+   - userStats.length = 0 → avgHours = NaN (cần check)
+
+3. **Future Timestamps:**
+   - Device clock sai → timestamp > Date.now()
+   - Cần validate timestamp khi log
+
+4. **Negative Duration:**
+   - Logout timestamp < Login timestamp
+   - Cần validate duration >= 0
+
+5. **Very Long Session:**
+   - User quên logout, duration = 1000 phút
+   - Cần cap duration max (VD: 480 phút = 8h)
+
+6. **Realtime Lag:**
+   - onSnapshot có thể delay vài giây
+   - isOnline status có thể không realtime 100%
+
+7. **Multiple Devices:**
+   - User login nhiều device cùng lúc
+   - Log sẽ có nhiều sessions overlap
+   - Calculation vẫn đúng (sum all)

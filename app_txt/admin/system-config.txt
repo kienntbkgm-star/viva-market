@@ -1,0 +1,260 @@
+# TÓM TẮT LOGIC TRANG ADMIN/SYSTEM-CONFIG.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang cấu hình toàn bộ tham số hệ thống:
+- Thông tin chung (Admin phone, promo enable, freeship code)
+- Tài chính & Tỷ lệ chia sẻ (admin/shipper/manager ratio)
+- Vận chuyển (phí ship, cho phép chọn shipper)
+- Timeout (thời gian chờ đơn hàng)
+- Giới hạn shop (max shop per order)
+- Hình ảnh chào mừng (welcome images)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `system`: Object chứa tất cả config từ Firestore `system/config`
+
+**Local State (formData):**
+```js
+{
+  adminPhone: string,
+  money: {
+    adminShipRatio: string,
+    managerGoodFee: string,
+    managerShipRatio: string,
+    refusePunish: string,
+    shipperShipRatio: string
+  },
+  ship: {
+    food: {
+      atDoorValue: string,
+      normalValue: string,
+      step: string
+    },
+    selectEnable: boolean
+  },
+  timeOut: {
+    finish: string,
+    food: string,
+    good: string,
+    service: string
+  },
+  maxShop: {
+    food: string,
+    good: string
+  },
+  promo: {
+    enable: boolean,
+    freeShipCode: string
+  },
+  welcomeImage: array
+}
+```
+
+## 🔄 LUỒNG THỰC THI
+
+### Load Config
+1. Load `system` từ store
+2. Map tất cả fields vào `formData` state
+3. Convert Number → String cho TextInput
+4. Hiển thị trong form
+
+### Edit Config
+1. User sửa TextInput hoặc Toggle Switch
+2. Update `formData` state
+3. Không save ngay (chờ nhấn nút Lưu)
+
+### Save Config
+1. Nhấn nút "Lưu" (header)
+2. Convert String → Number cho các field cần thiết
+3. Build payload object
+4. Update Firestore `system/config`
+5. Thêm `logDate` timestamp
+6. Alert thành công
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleSave()`
+```js
+const handleSave = async () => {
+  try {
+    const systemRef = doc(db, 'system', 'config');
+    
+    const payload = {
+      ...formData,
+      money: {
+        adminShipRatio: Number(formData.money.adminShipRatio),
+        managerGoodFee: Number(formData.money.managerGoodFee),
+        managerShipRatio: Number(formData.money.managerShipRatio),
+        refusePunish: Number(formData.money.refusePunish),
+        shipperShipRatio: Number(formData.money.shipperShipRatio),
+      },
+      ship: {
+        ...formData.ship,
+        food: {
+          atDoorValue: Number(formData.ship.food.atDoorValue),
+          normalValue: Number(formData.ship.food.normalValue),
+          step: Number(formData.ship.food.step),
+        }
+      },
+      timeOut: {
+        finish: Number(formData.timeOut.finish),
+        food: Number(formData.timeOut.food),
+        good: Number(formData.timeOut.good),
+        service: Number(formData.timeOut.service),
+      },
+      maxShop: {
+        food: Number(formData.maxShop.food),
+        good: Number(formData.maxShop.good)
+      },
+      logDate: new Date().toLocaleString('en-US'),
+    };
+
+    await updateDoc(systemRef, payload);
+    Alert.alert("Thành công", "Cấu hình hệ thống đã được cập nhật");
+  } catch (error) {
+    Alert.alert("Lỗi", error.message);
+  }
+};
+```
+
+### `updateWelcomeImage(index, value)`
+```js
+const updateWelcomeImage = (index, value) => {
+  const newImages = [...formData.welcomeImage];
+  newImages[index] = value;
+  setFormData({ ...formData, welcomeImage: newImages });
+};
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ KeyboardAvoidingView (iOS padding)
+  │   ├─ Header
+  │   │   ├─ Close Button
+  │   │   ├─ Title: "Cấu hình hệ thống"
+  │   │   └─ Save Button (primary)
+  │   │
+  │   └─ ScrollView (padding: 15)
+  │       ├─ Section: THÔNG TIN CHUNG
+  │       │   ├─ Admin Phone
+  │       │   ├─ Switch: Bật mã giảm giá
+  │       │   └─ FreeShip Code
+  │       │
+  │       ├─ Section: TÀI CHÍNH & TỶ LỆ CHIA SẺ
+  │       │   ├─ Row: Admin hưởng + Shipper hưởng
+  │       │   └─ Row: Manager hưởng + Phí quản lý hàng
+  │       │
+  │       ├─ Section: VẬN CHUYỂN & GIỚI HẠN
+  │       │   ├─ Switch: Cho phép chọn Shipper
+  │       │   └─ Row: Ship thường + Tận cửa
+  │       │
+  │       ├─ Section: THỜI GIAN CHỜ (TIMEOUT)
+  │       │   ├─ Row: Đồ ăn + Dịch vụ (seconds)
+  │       │   └─ Tự động hoàn thành (seconds)
+  │       │
+  │       ├─ Section: HÌNH ẢNH CHÀO MỪNG
+  │       │   └─ TextInput for each image URL
+  │       │
+  │       └─ Log Text: "Cập nhật lần cuối: ..."
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **Nested State:** formData có cấu trúc lồng sâu 3 cấp
+2. **String ↔ Number:** TextInput dùng string, Firestore lưu number
+3. **Switch Fields:** 
+   - `promo.enable`: Bật/tắt promo
+   - `ship.selectEnable`: Cho phép chọn shipper
+4. **Ratio Fields:** % chia sẻ (0-100)
+5. **Ship Fees:** Đơn vị nghìn đồng (k)
+6. **Timeout:** Đơn vị giây (seconds)
+7. **welcomeImage:** Array of URL strings
+8. **logDate:** Timestamp cập nhật cuối (format: 'en-US')
+9. **KeyboardAvoidingView:** iOS cần padding để không che input
+10. **ScrollView:** Dài, cần scroll để thấy hết
+11. **Section Style:** Background white, elevation 1, margin 15
+12. **Row Layout:** flexDirection row, justifyContent space-between
+13. **Col Width:** 48% mỗi cột trong row
+14. **Input Style:** Background #f5f7f9, border #eef1f4
+15. **Save Button:** Background primary, padding 20x8
+
+## 🚀 USER JOURNEY
+
+**Admin:**
+1. Vào System Config từ dashboard
+2. Xem tất cả cấu hình hiện tại
+3. Sửa các field cần thiết:
+   - Admin phone
+   - Tỷ lệ chia sẻ tiền ship
+   - Phí ship (thường/tận cửa)
+   - Timeout đơn hàng
+   - Welcome images
+4. Nhấn "Lưu"
+5. Alert thành công → Config được apply toàn hệ thống
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- (None - chỉ close/back)
+
+**Navigates FROM:**
+- Admin dashboard menu "Cài đặt"
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **Firestore Path:** `system/config` (single document)
+2. **Default Values:** Fallback về 0 hoặc string rỗng nếu thiếu
+3. **Ratio Sum:** adminShipRatio + shipperShipRatio nên = 100%
+4. **Step Field:** Phí thêm quán (mỗi shop thêm +X k)
+5. **refusePunish:** Phí phạt khi shipper từ chối đơn
+6. **managerGoodFee:** Phí quản lý hàng hóa
+7. **finish Timeout:** Tự động chuyển completed sau X giây
+8. **maxShop:** Giới hạn số shop tối đa trong 1 đơn
+9. **welcomeImage Length:** Map qua array để render từng input
+10. **logDate Format:** `new Date().toLocaleString('en-US')`
+11. **Update Mode:** `updateDoc()` (không dùng set/merge)
+12. **Number() Conversion:**
+    ```js
+    Number(formData.money.adminShipRatio)
+    ```
+    Chuyển string → number trước khi lưu
+13. **Nested Update:** Spread operator để update nested object
+14. **Close Button:** Icon "close" thay vì "chevron-back"
+15. **Label Font Size:** 11px (nhỏ, tiết kiệm không gian)
+
+## 🔍 CONFIG FIELDS DETAIL
+
+### money Object
+- `adminShipRatio`: % admin nhận từ phí ship (VD: 30%)
+- `shipperShipRatio`: % shipper nhận từ phí ship (VD: 70%)
+- `managerShipRatio`: % manager nhận (nếu có)
+- `managerGoodFee`: Phí quản lý hàng hóa
+- `refusePunish`: Phạt shipper từ chối đơn
+
+### ship Object
+- `food.normalValue`: Phí ship thường (k)
+- `food.atDoorValue`: Phí ship tận cửa (k)
+- `food.step`: Phí thêm quán (k)
+- `selectEnable`: Cho phép user chọn shipper
+
+### timeOut Object
+- `food`: Timeout đơn đồ ăn (seconds)
+- `good`: Timeout đơn hàng hóa (seconds)
+- `service`: Timeout đơn dịch vụ (seconds)
+- `finish`: Tự động completed (seconds)
+
+### maxShop Object
+- `food`: Max số shop trong 1 đơn food
+- `good`: Max số shop trong 1 đơn good
+
+### promo Object
+- `enable`: Bật/tắt promo toàn hệ thống
+- `freeShipCode`: Mã freeship mặc định
+
+### Others
+- `adminPhone`: SĐT admin support
+- `welcomeImage`: Array URL ảnh welcome screen
+- `logDate`: Timestamp cập nhật cuối

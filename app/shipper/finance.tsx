@@ -4,13 +4,13 @@ import { useRouter } from 'expo-router';
 import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    FlatList,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
@@ -18,12 +18,12 @@ import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
 
 export default function ShipperFinanceScreen() {
   const router = useRouter();
-  const { currentUser, isGuest, guestId } = useAppStore();
+  const { currentUser } = useAppStore();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const targetId = currentUser?.id || (isGuest ? guestId : null);
+    const targetId = currentUser?.id;
     if (!targetId) {
       setLoading(false);
       return;
@@ -45,26 +45,24 @@ export default function ShipperFinanceScreen() {
     });
 
     return () => unsubscribe();
-  }, [currentUser?.id, isGuest, guestId]);
+  }, [currentUser?.id]);
 
-  // LOGIC CỐT LÕI: 
-  // Trong DB: nợ là dương. 
-  // Để hiển thị: Đảo ngược lại để Shipper nợ Admin là SỐ ÂM.
-  const rawBalance = transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-  const displayBalance = rawBalance * -1; // Đảo dấu: Nợ Admin thành số âm
+  // LOGIC: 
+  // Trong DB: DEBT = dương (shipper nợ admin), PAYMENT = âm (thanh toán giảm nợ)
+  // Hiển thị: GIỐNG ADMIN - Dương = shipper nợ, Âm = admin nợ shipper
+  const totalBalance = transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
 
   const renderItem = ({ item }) => {
-    // Mỗi giao dịch cũng đảo dấu để nhất quán: Thu nhập (+) / Nợ (-)
-    const displayAmount = (item.amount || 0) * -1;
-    const isDebtToAdmin = displayAmount < 0; 
+    const amount = item.amount || 0;
+    const isShipperDebt = amount > 0; // Dương = shipper nợ admin
     
     return (
       <View style={styles.itemRow}>
-        <View style={[styles.iconBox, { backgroundColor: isDebtToAdmin ? '#FFF4E5' : '#EAFAF1' }]}>
+        <View style={[styles.iconBox, { backgroundColor: isShipperDebt ? '#FFF4E5' : '#EAFAF1' }]}>
           <MaterialCommunityIcons 
-              name={isDebtToAdmin ? 'receipt' : 'cash-check'} 
+              name={isShipperDebt ? 'receipt' : 'cash-check'} 
               size={20} 
-              color={isDebtToAdmin ? '#E67E22' : '#27AE60'} 
+              color={isShipperDebt ? '#E67E22' : '#27AE60'} 
           />
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
@@ -76,8 +74,8 @@ export default function ShipperFinanceScreen() {
           )}
           <Text style={styles.dateText}>{new Date(item.createdAt).toLocaleString('vi-VN')}</Text>
         </View>
-        <Text style={[styles.amountText, { color: isDebtToAdmin ? '#E67E22' : '#27AE60' }]}>
-          {displayAmount > 0 ? '+' : ''}{(displayAmount * 1000).toLocaleString()}đ
+        <Text style={[styles.amountText, { color: isShipperDebt ? '#E67E22' : '#27AE60' }]}>
+          {amount > 0 ? '+' : ''}{(amount * 1000).toLocaleString()}đ
         </Text>
       </View>
     );
@@ -102,15 +100,15 @@ export default function ShipperFinanceScreen() {
         <View style={{ width: 28 }} />
       </View>
 
-      {/* Hiển thị số âm khi nợ Admin, số dương khi có tiền dư */}
-      <View style={[styles.balanceCard, { backgroundColor: displayBalance < 0 ? '#E67E22' : '#27AE60' }]}>
+      {/* Hiển thị: Dương = Shipper nợ Admin, Âm = Admin nợ Shipper */}
+      <View style={[styles.balanceCard, { backgroundColor: totalBalance > 0 ? '#E67E22' : '#27AE60' }]}>
         <Text style={styles.balanceLabel}>Số dư ví hiện tại</Text>
         <Text style={styles.balanceValue}>
-            {(displayBalance * 1000).toLocaleString()}đ
+            {(totalBalance * 1000).toLocaleString()}đ
         </Text>
         <View style={styles.statusBadge}>
             <Text style={styles.statusBadgeText}>
-                {displayBalance < 0 ? 'BẠN ĐANG NỢ ADMIN' : 'ADMIN ĐANG NỢ BẠN'}
+                {totalBalance > 0 ? 'BẠN ĐANG NỢ ADMIN' : 'ADMIN ĐANG NỢ BẠN'}
             </Text>
         </View>
       </View>

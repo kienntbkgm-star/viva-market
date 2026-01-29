@@ -1,0 +1,174 @@
+# TÓM TẮT LOGIC TRANG REGISTER.TSX
+
+## 🎯 MỤC ĐÍCH
+Trang **đăng ký tài khoản mới** - cho phép user tạo tài khoản để sử dụng app
+
+## 📊 STATE QUẢN LÝ
+
+**State local:**
+- `name`: Họ và tên
+- `phone`: Số điện thoại
+- `password`: Mật khẩu
+
+**Data từ Store:**
+- `register()`: Function đăng ký tài khoản
+- `expoToken`: Token cho push notification
+
+## 🔄 LUỒNG THỰC THI
+
+### **Khi User Đăng Ký:**
+```
+User nhập: name, phone, password
+  ↓
+Nhấn "TẠO TÀI KHOẢN"
+  ↓
+handleRegister() được gọi
+  ↓
+Validate:
+  - Kiểm tra không để trống
+  - SĐT phải >= 10 ký tự
+  ↓
+Gọi register(name, phone, password, expoToken)
+  ↓
+Nếu success:
+  - Alert "Tài khoản đã được tạo"
+  - Button "Đăng nhập ngay" → /login
+Nếu fail:
+  - Alert "Lỗi" + message
+```
+
+## 🔧 FUNCTION CHÍNH
+
+### `handleRegister()`
+**Validation:**
+1. Kiểm tra không để trống: `!name || !phone || !password`
+2. Kiểm tra độ dài SĐT: `phone.length < 10`
+
+**Xử lý:**
+```javascript
+const result = await register(name, phone, password, expoToken);
+if (result.success) {
+  Alert với button "Đăng nhập ngay" → router.replace('/login')
+} else {
+  Alert hiển thị lỗi
+}
+```
+
+**Đặc điểm:**
+- Gửi kèm expoToken để admin có thể gửi push notification sau này
+- Sau khi đăng ký thành công → Chuyển đến trang Login (không tự động login)
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ↓
+ScrollView
+  ├── Nút quay lại (← Quay lại)
+  ├── Title: "ĐĂNG KÝ"
+  ├── MyInput (Họ và tên)
+  ├── MyInput (Số điện thoại - phone-pad)
+  ├── MyInput (Mật khẩu - isPass)
+  ├── MyButton (TẠO TÀI KHOẢN)
+  └── Link: "Đã có tài khoản? Đăng nhập" → router.back()
+```
+
+## ⚙️ VALIDATION
+
+**Kiểm tra dữ liệu:**
+```javascript
+// 1. Không để trống
+if (!name || !phone || !password) {
+  return Alert.alert("Lỗi", "Vui lòng nhập đầy đủ thông tin");
+}
+
+// 2. Độ dài SĐT
+if (phone.length < 10) {
+  return Alert.alert("Lỗi", "Số điện thoại không hợp lệ");
+}
+```
+
+**Lưu ý:**
+- Chỉ check basic validation (rỗng, độ dài)
+- Không check format SĐT chi tiết (regex)
+- Không check độ mạnh password
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+✅ **Không tự động login** - Sau khi đăng ký thành công phải quay về Login
+✅ **Gửi kèm expoToken** - Để sau này admin có thể push notification
+✅ **Alert với button action** - Nhấn "Đăng nhập ngay" chuyển luôn đến Login
+✅ **2 cách quay lại Login**:
+   - Nút "← Quay lại" phía trên
+   - Link "Đã có tài khoản? Đăng nhập" phía dưới
+✅ **Không có loading state** - Register xong thì alert ngay
+
+## 🚀 USER JOURNEY
+
+```
+User chưa có tài khoản
+  ↓
+Vào trang Login → Click "Đăng ký ngay"
+  ↓
+Vào trang Register
+  ↓
+Nhập thông tin: Tên, SĐT, Password
+  ↓
+Nhấn "TẠO TÀI KHOẢN"
+  ↓
+Validate pass → Gọi API register
+  ↓
+Thành công → Alert → Nhấn "Đăng nhập ngay"
+  ↓
+Quay về Login với tài khoản mới tạo
+```
+
+## 🔗 NAVIGATION
+
+**Vào Register từ:**
+- ✅ Login: Click link "Đăng ký ngay"
+
+**Từ Register đi đến:**
+- ✅ Login: Sau khi đăng ký thành công (alert button)
+- ✅ Login: Click nút "← Quay lại" hoặc link "Đã có tài khoản? Đăng nhập"
+
+## 💾 DỮ LIỆU TẠO MỚI
+
+**User mới được tạo với:**
+```javascript
+{
+  name: "Tên user nhập",
+  phone: "SĐT user nhập",
+  password: "Password user nhập",
+  expoToken: "Token từ device (nếu có)",
+  role: "user",           // Mặc định
+  status: "enable",       // Mặc định
+  point: 0,              // Mặc định
+  createdAt: ISO string
+}
+```
+
+**Lưu vào:**
+- Firestore collection: `users`
+- Document ID: auto-generated hoặc custom (tùy logic store)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+**expoToken:**
+- Dùng để gửi push notification
+- Được lấy từ store (đã setup khi app khởi động)
+- Admin có thể gửi thông báo cho user này sau khi đăng ký
+
+**Không tự động login:**
+- Sau khi register success, user phải login lại
+- Lý do: Để verify password một lần nữa
+- Best practice: Tách biệt register và login flow
+
+**State không reset:**
+- Sau khi register fail, dữ liệu vẫn giữ nguyên
+- User có thể sửa và thử lại
+- Không bị mất dữ liệu đã nhập
+
+===============================================================================
+CẬP NHẬT: 27/01/2026
+===============================================================================

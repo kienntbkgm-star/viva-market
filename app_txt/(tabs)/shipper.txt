@@ -1,0 +1,261 @@
+# TÓM TẮT LOGIC TRANG SHIPPER.TSX
+
+## 🎯 MỤC ĐÍCH
+Tab dành riêng cho shipper để:
+- Xem sảnh đơn hàng (available orders - status pending)
+- Nhận đơn hàng (chuyển sang processing)
+- Xem đơn đang giao (my processing orders)
+- Hoàn thành đơn (chuyển sang completed + tạo transaction nợ)
+- Xem lịch sử đơn đã giao (completed orders)
+
+## 📊 STATE & DATA
+
+**Store:**
+- `foodOrders`: danh sách đơn hàng food
+- `currentUser`: thông tin shipper hiện tại
+- `system`: cấu hình hệ thống (shipperShipRatio)
+
+**Local State:**
+- `activeTab`: 'available' | 'my_orders' | 'completed'
+
+**Computed Values:**
+- `availableOrders`: Đơn pending (chưa có shipper)
+- `myOrders`: Đơn processing của shipper này
+- `completedOrders`: Đơn completed của shipper này
+- `shipperRatio`: % tiền ship shipper nhận (default 70%)
+- `adminRatio`: % tiền ship admin nhận (default 30%)
+
+## 🔄 LUỒNG THỰC THI
+
+### Tab Available (Sảnh đơn)
+1. Hiển thị danh sách đơn `status === 'pending'`
+2. Shipper nhấn "NHẬN ĐƠN"
+3. Check `currentUser.isReady`:
+   - Nếu false → Alert "Bật trạng thái Sẵn sàng"
+   - Nếu true → Update Firestore:
+     - `status = 'processing'`
+     - `shipperId = currentUser.id`
+     - Thêm log "Shipper đã nhận đơn"
+4. Chuyển sang tab "Đang giao"
+
+### Tab My Orders (Đang giao)
+1. Hiển thị danh sách đơn `status === 'processing' && shipperId === currentUser.id`
+2. Shipper nhấn "ĐÃ GIAO"
+3. Tính toán tiền:
+   - `totalShip = baseShip + extraStepFee`
+   - `adminShare = totalShip * adminRatio / 100`
+   - `netDebt = adminShare - discount` (làm tròn 3 chữ số thập phân)
+4. Update Firestore:
+   - `status = 'completed'`
+   - Thêm log "Shipper đã giao hàng thành công"
+5. Tạo transaction (nếu COD):
+   - `type: 'DEBT'`
+   - `amount: netDebt`
+   - `desc: 'Phí ship đơn #{orderId}'`
+6. Alert thành công
+
+### Tab Completed (Lịch sử)
+1. Hiển thị danh sách đơn `status === 'completed' && shipperId === currentUser.id`
+2. Chỉ xem, không có hành động
+
+## 🔧 CÁC FUNCTION QUAN TRỌNG
+
+### `handleReceiveOrder(item)`
+Nhận đơn từ sảnh:
+```js
+if (!currentUser?.isReady) {
+  Alert.alert("Chưa sẵn sàng", "Vui lòng bật trạng thái 'Sẵn sàng' trong Hồ sơ...");
+  return;
+}
+await updateDoc(orderRef, {
+  status: 'processing',
+  shipperId: currentUser.id,
+  logs: arrayUnion({ content: 'Shipper đã nhận đơn', status: 'processing', time: ... })
+});
+setActiveTab('my_orders');
+```
+
+### `handleCompleteOrder(item)`
+Hoàn thành đơn:
+```js
+const totalShip = (item.baseShip || 0) + (item.extraStepFee || 0);
+const adminShare = (totalShip * adminRatio) / 100;
+const discount = item.discount || 0;
+const netDebt = Math.round((adminShare - discount) * 1000) / 1000; // Làm tròn 3 chữ số
+
+await updateDoc(orderRef, {
+  status: 'completed',
+  logs: arrayUnion({ content: 'Shipper đã giao hàng thành công', status: 'completed', time: ... })
+});
+
+if (item.paymentMethod === 'COD') {
+  await addDoc(collection(db, 'transactions'), {
+    userId: currentUser.id,
+    userName: currentUser.name,
+    type: 'DEBT',
+    amount: netDebt,
+    orderId: item.orderId || item.id,
+    desc: `Phí ship đơn #${item.orderId || item.id}`,
+    createdAt: new Date().toISOString(),
+    performedBy: 'system'
+  });
+}
+```
+
+### Logic tính tiền
+```js
+const totalShip = (item.baseShip || 0) + (item.extraStepFee || 0);
+const shipperEarn = (totalShip * shipperRatio) / 100; // Công shipper nhận
+const adminShare = (totalShip * adminRatio) / 100; // Admin nhận
+const debtAmount = adminShare - (item.discount || 0); // Nợ = adminShare - giảm giá
+```
+
+## 🎨 UI CẤU TRÚC
+
+```
+SafeAreaView
+  ├─ Header
+  │   ├─ Greeting: "Chào Shipper, {name}"
+  │   └─ Wallet Button → /shipper/finance
+  │
+  ├─ Tabs (3 tabs)
+  │   ├─ Sảnh đơn (availableOrders.length)
+  │   ├─ Đang giao (myOrders.length)
+  │   └─ Lịch sử
+  │
+  └─ Content
+      ├─ (Nếu available tab và !isReady)
+      │   └─ Not Ready Container
+      │       ├─ Icon alert-circle
+      │       ├─ Title: "Bạn chưa bật trạng thái sẵn sàng"
+      │       ├─ Desc: "Vui lòng bật..."
+      │       └─ Button: "ĐI ĐẾN HỒ SƠ"
+      │
+      └─ (Nếu ready hoặc tab khác)
+          └─ FlatList (orders)
+              └─ renderOrderItem: Order Card (tap vào → /admin/order-detail)
+                  ├─ Header: #{orderId} + Time
+                  ├─ Address Box
+                  │   ├─ Person: userName - userPhone
+                  │   └─ Location: address
+                  ├─ Footer
+                  │   ├─ Left:
+                  │   │   ├─ Thu khách: finalTotal
+                  │   │   ├─ Công: shipperEarn (nếu processing/completed)
+                  │   │   └─ Nộp Admin: debtAmount (nếu processing/completed)
+                  │   └─ Right:
+                  │       ├─ Button "NHẬN ĐƠN" (available)
+                  │       └─ Button "ĐÃ GIAO" (my_orders)
+```
+
+## ⚡ ĐIỂM ĐẶC BIỆT
+
+1. **isReady Guard:** Shipper phải bật "Sẵn sàng hôm nay" trong profile trước khi nhận đơn
+2. **Not Ready Screen:** Hiển thị khi available tab và !isReady, có nút đi đến profile
+3. **Full Order ID Display:** Hiển thị full `orderId` (VD: FOOD-1234567890) thay vì substring
+4. **Transaction Auto-create:** Tự động tạo transaction DEBT khi hoàn thành đơn COD
+5. **netDebt Rounding:** Làm tròn 3 chữ số thập phân để tránh lỗi số dài
+6. **Debt Color Coding:**
+   - `debtAmount >= 0` → #E67E22 (cam) "Nộp Admin"
+   - `debtAmount < 0` → #27AE60 (xanh) "Admin bù"
+7. **Tab Badge:** Số lượng đơn hiển thị trong label tab
+8. **Address Box:** Background #F8F9FA, icons person + location
+9. **Order Card Tap:** Navigate đến `/admin/order-detail` với orderId params
+10. **Wallet Button:** Icon wallet-membership, background #FFF4E5
+
+## 🚀 USER JOURNEY
+
+**Shipper chưa sẵn sàng:**
+1. Vào Shipper tab → Tab "Sảnh đơn"
+2. Thấy thông báo "Bạn chưa bật trạng thái sẵn sàng"
+3. Nhấn "ĐI ĐẾN HỒ SƠ"
+4. Bật Switch "Sẵn sàng hôm nay" trong profile
+5. Quay lại Shipper tab → Thấy sảnh đơn
+
+**Shipper đã sẵn sàng:**
+1. Vào Shipper tab → Thấy sảnh đơn (pending orders)
+2. Nhấn "NHẬN ĐƠN" trên đơn muốn giao
+3. Chuyển sang tab "Đang giao" → Thấy đơn vừa nhận
+4. Giao hàng cho khách
+5. Nhấn "ĐÃ GIAO"
+6. Đơn chuyển sang tab "Lịch sử"
+7. Transaction nợ được tạo tự động
+
+**Xem ví nợ:**
+8. Nhấn icon Ví nợ (header) → Shipper finance page
+
+## 🔗 NAVIGATION
+
+**Navigates TO:**
+- `/shipper/finance` (nút wallet header)
+- `/profile` (nút "ĐI ĐẾN HỒ SƠ" khi chưa ready)
+- `/admin/order-detail` (tap vào order card, với orderId params)
+
+**Navigates FROM:**
+- Bottom tab navigation (shipper tab)
+
+## 💡 LƯU Ý KỸ THUẬT
+
+1. **shipperShipRatio Config:**
+   ```js
+   const shipperRatio = system?.money?.shipperShipRatio || 70;
+   const adminRatio = 100 - shipperRatio;
+   ```
+2. **Filter Queries:**
+   ```js
+   availableOrders: order.status === 'pending'
+   myOrders: order.status === 'processing' && order.shipperId === currentUser?.id
+   completedOrders: order.status === 'completed' && order.shipperId === currentUser?.id
+   ```
+3. **Transaction Structure:**
+   ```js
+   {
+     userId: string,
+     userName: string,
+     type: 'DEBT',
+     amount: number,
+     orderId: string,
+     desc: string,
+     createdAt: ISO string,
+     performedBy: 'system'
+   }
+   ```
+4. **Math.round() Fix:** Tránh số thập phân dài (VD: 12.999999999998):
+   ```js
+   Math.round((adminShare - discount) * 1000) / 1000
+   ```
+5. **orderId Priority:** Ưu tiên `item.orderId`, fallback `item.id`
+6. **Time Display:**
+   ```js
+   new Date(item.createdAt).toLocaleTimeString('vi-VN')
+   ```
+7. **Price Format:**
+   ```js
+   ((finalTotal || 0) * 1000).toLocaleString() + 'đ'
+   ```
+8. **Switch Tab After Action:** `setActiveTab('my_orders')` sau khi nhận đơn
+9. **Alert Platform-specific:** Web `window.alert()`, Native `Alert.alert()`
+10. **COD Check:** Chỉ tạo transaction nếu `paymentMethod === 'COD'`
+11. **Tab Active Style:** Border bottom COLORS.primary khi active
+12. **No Loading State:** Giả định foodOrders đã load xong
+13. **numberOfLines:** Address text có `numberOfLines={2}`
+14. **Card Touch:** `onPress={() => router.push({ pathname: '/admin/order-detail', params: { orderId } })}`
+15. **Wallet Text:** "Ví nợ" (không phải "Ví công nợ")
+
+## 🔍 TÍNH TOÁN TIỀN CHI TIẾT
+
+**Ví dụ:**
+- `totalShip = 15` (baseShip 11 + extraStepFee 4)
+- `shipperRatio = 70%`
+- `adminRatio = 30%`
+- `discount = 5`
+
+**Kết quả:**
+- `shipperEarn = 15 * 70 / 100 = 10.5` (shipper nhận)
+- `adminShare = 15 * 30 / 100 = 4.5` (admin nhận từ phí ship)
+- `netDebt = 4.5 - 5 = -0.5` (admin bù lại shipper 0.5k vì discount > adminShare)
+
+**Hiển thị:**
+- Thu khách: 115k (finalTotal)
+- Công: 10.5k
+- Admin bù: 500đ (màu xanh)

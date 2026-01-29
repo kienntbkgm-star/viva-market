@@ -4,15 +4,15 @@ import { useRouter } from 'expo-router'; // Thêm router
 import { arrayUnion, collection, doc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
@@ -21,6 +21,38 @@ import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
 const formatCurrency = (val) => {
   if (!val) return '0';
   return (val * 1000).toLocaleString('vi-VN');
+};
+
+// Tính realtime từ items array
+const calculateOrderTotals = (order) => {
+  if (!order.items || order.items.length === 0) {
+    return { totalFood: 0, shopCount: 0, extraStepFee: 0, finalTotal: 0 };
+  }
+  
+  // Filter active items only
+  const activeItems = order.items.filter(item => !item.itemStatus || item.itemStatus === 'active');
+  
+  // Calculate totalFood from active items
+  const totalFood = activeItems.reduce((sum, item) => {
+    const basePrice = item.pricePromo || 0;
+    const optionsPrice = (item.selectedOptions || []).reduce((s, opt) => s + (opt.price || 0), 0);
+    return sum + (basePrice + optionsPrice) * item.quantity;
+  }, 0);
+  
+  // Calculate shop count from active items
+  const shopIds = new Set(activeItems.map(item => item.shopId));
+  const shopCount = shopIds.size;
+  
+  // Calculate extraStepFee from multiShopFee rate
+  const multiShopFee = order.multiShopFee || 0;
+  const extraStepFee = shopCount > 1 ? (shopCount - 1) * multiShopFee : 0;
+  
+  // Calculate finalTotal
+  const baseShip = order.baseShip || 0;
+  const discount = order.discount || 0;
+  const finalTotal = totalFood + baseShip + extraStepFee - discount;
+  
+  return { totalFood, shopCount, extraStepFee, finalTotal };
 };
 
 const getStatusColor = (status) => {
@@ -50,13 +82,13 @@ const getStatusText = (status) => {
 };
 
 export default function OrdersScreen() {
-  const { currentUser, isGuest, guestId } = useAppStore();
+  const { currentUser } = useAppStore();
   const router = useRouter(); // Khởi tạo router
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const targetId = currentUser?.id || (isGuest ? guestId : null);
+    const targetId = currentUser?.id;
 
     if (!targetId) {
       const timer = setTimeout(() => setLoading(false), 2000);
@@ -65,40 +97,74 @@ export default function OrdersScreen() {
 
     setLoading(true);
     try {
-      const q = query(
+      // Query foodOrders
+      const qFood = query(
         collection(db, 'foodOrders'),
         where('userId', '==', targetId),
         orderBy('createdAt', 'desc')
       );
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-          const data = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          }));
-          
-          const sortedData = data.sort((a, b) => {
-            const priority = { 'pending': 1, 'pendding': 1, 'confirmed': 2, 'shipping': 3, 'completed': 4, 'cancelled': 5 };
-            const pA = priority[a.status?.toLowerCase()] || 99;
-            const pB = priority[b.status?.toLowerCase()] || 99;
-            if (pA !== pB) return pA - pB;
-            return new Date(b.createdAt) - new Date(a.createdAt);
-          });
-
-          setOrders(sortedData);
-          setLoading(false);
-        }, (error) => {
-          console.error("Firestore Error:", error);
-          setLoading(false);
-        }
+      // Query serviceOrders
+      const qService = query(
+        collection(db, 'serviceOrders'),
+        where('userId', '==', targetId),
+        orderBy('createdAt', 'desc')
       );
 
-      return () => unsubscribe();
+      let foodData = [];
+      let serviceData = [];
+
+      // Listen to foodOrders
+      const unsubscribeFood = onSnapshot(qFood, (snapshot) => {
+        foodData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          type: 'food',
+          ...doc.data()
+        }));
+        mergeAndSetOrders();
+      }, (error) => {
+        console.error("Firestore Error (foodOrders):", error);
+        setLoading(false);
+      });
+
+      // Listen to serviceOrders
+      const unsubscribeService = onSnapshot(qService, (snapshot) => {
+        serviceData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          type: 'service',
+          ...doc.data()
+        }));
+        mergeAndSetOrders();
+      }, (error) => {
+        console.error("Firestore Error (serviceOrders):", error);
+        setLoading(false);
+      });
+
+      // Merge and sort both lists
+      const mergeAndSetOrders = () => {
+        const merged = [...foodData, ...serviceData];
+        
+        const sortedData = merged.sort((a, b) => {
+          const priority = { 'pending': 1, 'pendding': 1, 'confirmed': 2, 'shipping': 3, 'completed': 4, 'cancelled': 5 };
+          const pA = priority[a.status?.toLowerCase()] || 99;
+          const pB = priority[b.status?.toLowerCase()] || 99;
+          if (pA !== pB) return pA - pB;
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+
+        setOrders(sortedData);
+        setLoading(false);
+      };
+
+      return () => {
+        unsubscribeFood();
+        unsubscribeService();
+      };
     } catch (err) {
       console.error("Query Error:", err);
       setLoading(false);
     }
-  }, [currentUser?.id, isGuest, guestId]);
+  }, [currentUser?.id]);
 
   const handleCancelOrder = (order) => {
     const s = order.status?.toLowerCase();
@@ -107,7 +173,9 @@ export default function OrdersScreen() {
     const confirmMsg = "Bạn có chắc muốn hủy đơn này?";
     const proceedCancel = async () => {
       try {
-        const orderRef = doc(db, 'foodOrders', order.id);
+        // Determine collection based on order type
+        const collectionName = order.type === 'service' ? 'serviceOrders' : 'foodOrders';
+        const orderRef = doc(db, collectionName, order.id);
         await updateDoc(orderRef, {
           status: 'cancelled',
           logs: arrayUnion({
@@ -134,19 +202,25 @@ export default function OrdersScreen() {
   const renderOrderItem = ({ item }) => (
     <View style={styles.orderCard}>
       <View style={styles.orderHeader}>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons 
+              name={item.type === 'service' ? 'build' : 'fast-food'} 
+              size={16} 
+              color={item.type === 'service' ? '#9B59B6' : '#E67E22'} 
+              style={{ marginRight: 6 }}
+            />
             <Text style={styles.orderIdText}>Mã đơn: {item.orderId || String(item.id).substring(0,8)}</Text>
-            {(item.status?.toLowerCase() === 'pending' || item.status?.toLowerCase() === 'pendding') && (
-              <TouchableOpacity onPress={() => handleCancelOrder(item)} style={styles.smallCancelBtn}>
-                <Text style={styles.smallCancelText}>Hủy</Text>
-              </TouchableOpacity>
-            )}
           </View>
-          <Text style={styles.orderTimeText}>
-             {item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : 'Không rõ thời gian'}
-          </Text>
+          {(item.status?.toLowerCase() === 'pending' || item.status?.toLowerCase() === 'pendding') && (
+            <TouchableOpacity onPress={() => handleCancelOrder(item)} style={styles.smallCancelBtn}>
+              <Text style={styles.smallCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          )}
         </View>
+        <Text style={styles.orderTimeText}>
+           {item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : 'Không rõ thời gian'}
+        </Text>
       </View>
 
       <View style={{ marginBottom: 10 }}>
@@ -155,42 +229,78 @@ export default function OrdersScreen() {
         </View>
       </View>
 
-      <View style={styles.itemSection}>
-        {item.items?.map((food, idx) => (
-          <Text key={idx} style={styles.foodNameText} numberOfLines={1}>
-            • {food.name} x{food.quantity}
+      {/* Render different content for service vs food */}
+      {item.type === 'service' ? (
+        <View style={styles.itemSection}>
+          <Text style={styles.foodNameText} numberOfLines={2}>
+            🔧 {item.serviceName || 'Dịch vụ'}
           </Text>
-        ))}
-      </View>
+          {item.note && (
+            <Text style={styles.noteText} numberOfLines={2}>
+              Ghi chú: {item.note}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <View style={styles.itemSection}>
+          {item.items?.map((food, idx) => (
+            <Text key={idx} style={styles.foodNameText} numberOfLines={1}>
+              • {food.name} x{food.quantity}
+            </Text>
+          ))}
+        </View>
+      )}
 
       <View style={styles.priceSection}>
-        <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>Tiền món:</Text>
-          <Text>{formatCurrency(item.totalFood)}đ</Text>
-        </View>
-        
-        <View style={styles.priceRow}>
-          <Text style={styles.priceLabel}>Phí vận chuyển gốc:</Text>
-          <Text>{formatCurrency(item.baseShip || 0)}đ</Text>
-        </View>
+        {item.type === 'service' ? (
+          // Service order pricing
+          <>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Giá dịch vụ:</Text>
+              <Text>{formatCurrency(item.price / 1000)}đ</Text>
+            </View>
+            <View style={[styles.priceRow, {marginTop: 5}]}>
+              <Text style={styles.totalLabel}>Tổng thanh toán:</Text>
+              <Text style={styles.totalValueText}>{formatCurrency(item.price / 1000)}đ</Text>
+            </View>
+          </>
+        ) : (
+          // Food order pricing
+          (() => {
+            const { totalFood, shopCount, extraStepFee, finalTotal } = calculateOrderTotals(item);
+            return (
+              <>
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Tiền món:</Text>
+                  <Text>{formatCurrency(totalFood)}đ</Text>
+                </View>
+                
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Phí vận chuyển gốc:</Text>
+                  <Text>{formatCurrency(item.baseShip || 0)}đ</Text>
+                </View>
 
-        {(item.extraStepFee > 0) && (
-          <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Phí thêm shop (+{(item.shopIds?.length || 1) - 1} shop):</Text>
-            <Text>+{formatCurrency(item.extraStepFee)}đ</Text>
-          </View>
-        )}
+                {(extraStepFee > 0) && (
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Phí thêm shop (+{shopCount - 1} shop):</Text>
+                    <Text>+{formatCurrency(extraStepFee)}đ</Text>
+                  </View>
+                )}
 
-        {item.discount > 0 && (
-          <View style={styles.priceRow}>
-            <Text style={[styles.priceLabel, {color: 'green'}]}>Giảm giá:</Text>
-            <Text style={{color: 'green'}}>-{formatCurrency(item.discount)}đ</Text>
-          </View>
+                {item.discount > 0 && (
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.priceLabel, {color: 'green'}]}>Giảm giá:</Text>
+                    <Text style={{color: 'green'}}>-{formatCurrency(item.discount)}đ</Text>
+                  </View>
+                )}
+                <View style={[styles.priceRow, {marginTop: 5}]}>
+                  <Text style={styles.totalLabel}>Tổng thanh toán:</Text>
+                  <Text style={styles.totalValueText}>{formatCurrency(finalTotal)}đ</Text>
+                </View>
+              </>
+            );
+          })()
         )}
-        <View style={[styles.priceRow, {marginTop: 5}]}>
-          <Text style={styles.totalLabel}>Tổng thanh toán:</Text>
-          <Text style={styles.totalValueText}>{formatCurrency(item.finalTotal)}đ</Text>
-        </View>
       </View>
 
       <View style={styles.logSection}>
@@ -221,7 +331,7 @@ export default function OrdersScreen() {
     <SafeAreaView style={GlobalStyles.container}>
       {/* Cập nhật Header có nút Back */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.push('/(tabs)/profile')}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Đơn hàng của tôi</Text>
@@ -269,6 +379,7 @@ const styles = StyleSheet.create({
   statusText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
   itemSection: { borderBottomWidth: 1, borderColor: '#f0f0f0', paddingVertical: 8 },
   foodNameText: { fontSize: 13, color: '#555', marginBottom: 2 },
+  noteText: { fontSize: 11, color: '#999', marginTop: 4, fontStyle: 'italic' },
   priceSection: { paddingVertical: 10, borderBottomWidth: 1, borderColor: '#f0f0f0' },
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 },
   priceLabel: { fontSize: 12, color: '#777' },
