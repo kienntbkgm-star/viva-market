@@ -1,7 +1,8 @@
 // @ts-nocheck
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router'; // Thêm router để điều hướng
 import React from 'react';
-import { FlatList, Image, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
 
@@ -20,13 +21,27 @@ export default function ServicesScreen() {
     const renderServiceItem = ({ item }) => {
         const priceNormal = (item.priceNormal || 0) * 1000;
         const pricePromo = (item.pricePromo || 0) * 1000;
+        const isDisabled = item.status !== 'enable';
+        let statusLabel = 'TẠM NGƯNG';
 
         return (
-            <TouchableOpacity 
-                style={styles.serviceCard} 
-                onPress={() => handlePressService(item)} // Thêm sự kiện nhấn vào card
+            <TouchableOpacity
+                style={[styles.serviceCard, isDisabled && { opacity: 0.5 }]}
+                activeOpacity={isDisabled ? 1 : 0.7}
+                onPress={() => {
+                    if (isDisabled) {
+                        alert('Dịch vụ này hiện đang tạm ngưng.');
+                        return;
+                    }
+                    handlePressService(item);
+                }}
             >
-                <Image source={{ uri: item.image || 'https://via.placeholder.com/150' }} style={styles.serviceImage} />
+                <Image source={item.img || item.backupImg || 'https://via.placeholder.com/150'} style={styles.serviceImage} contentFit="cover" cachePolicy="memory-disk" />
+                {isDisabled && (
+                    <View style={styles.soldOutOverlay}>
+                        <Text style={styles.soldOutLabel}>{statusLabel}</Text>
+                    </View>
+                )}
                 <View style={styles.cardContent}>
                     <Text style={styles.serviceName} numberOfLines={2}>{item.name}</Text>
                     <View style={styles.priceRow}>
@@ -35,9 +50,16 @@ export default function ServicesScreen() {
                             <Text style={styles.oldPrice}>{priceNormal.toLocaleString('vi-VN')}đ</Text>
                         )}
                     </View>
-                    <TouchableOpacity 
-                        style={styles.bookBtn} 
-                        onPress={() => handlePressService(item)} // Thêm sự kiện nhấn vào nút
+                    <TouchableOpacity
+                        style={styles.bookBtn}
+                        onPress={() => {
+                            if (isDisabled) {
+                                alert('Dịch vụ này hiện đang tạm ngưng.');
+                                return;
+                            }
+                            handlePressService(item);
+                        }}
+                        disabled={isDisabled}
                     >
                         <Text style={styles.bookBtnText}>Đặt ngay</Text>
                     </TouchableOpacity>
@@ -53,15 +75,21 @@ export default function ServicesScreen() {
                 <Text style={styles.headerSub}>Dịch vụ tận tâm cho ngôi nhà của bạn</Text>
             </View>
             
-            <FlatList
-                data={services}
-                keyExtractor={(item) => item.id.toString()}
-                renderItem={renderServiceItem}
-                numColumns={2}
-                columnWrapperStyle={styles.row}
-                contentContainerStyle={styles.listPadding}
-                ListEmptyComponent={<Text style={styles.emptyText}>Hiện chưa có dịch vụ nào.</Text>}
-            />
+                        <FlatList
+                                data={services.slice().sort((a, b) => {
+                                    const aDisabled = a.status !== 'enable';
+                                    const bDisabled = b.status !== 'enable';
+                                    if (aDisabled && !bDisabled) return 1;
+                                    if (!aDisabled && bDisabled) return -1;
+                                    return 0;
+                                })}
+                                keyExtractor={(item) => item.id.toString()}
+                                renderItem={renderServiceItem}
+                                numColumns={2}
+                                columnWrapperStyle={styles.row}
+                                contentContainerStyle={styles.listPadding}
+                                ListEmptyComponent={<Text style={styles.emptyText}>Hiện chưa có dịch vụ nào.</Text>}
+                        />
         </SafeAreaView>
     );
 }
@@ -84,6 +112,28 @@ const styles = StyleSheet.create({
         overflow: 'hidden'
     },
     serviceImage: { width: '100%', height: 120 },
+    soldOutOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 2,
+        borderRadius: 15,
+    },
+    soldOutLabel: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 16,
+        backgroundColor: 'rgba(255,0,0,0.7)',
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 8,
+        overflow: 'hidden',
+    },
     cardContent: { padding: 12 },
     serviceName: { fontSize: 14, fontWeight: 'bold', color: '#333', height: 40 },
     priceRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, flexWrap: 'wrap' },

@@ -1,11 +1,11 @@
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { arrayUnion, doc, updateDoc } from 'firebase/firestore';
 import React, { useMemo } from 'react';
 import {
     Alert,
-    Image,
     Platform,
     SafeAreaView,
     ScrollView,
@@ -172,7 +172,7 @@ export default function AdminOrderDetailScreen() {
           <Text style={styles.sectionTitle}>DANH SÁCH MÓN</Text>
           {order.items?.map((item, index) => (
             <View key={index} style={styles.foodItem}>
-              <Image source={{ uri: item.img }} style={styles.foodImg} />
+              <Image source={item.img} style={styles.foodImg} contentFit="cover" cachePolicy="memory-disk" />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.foodName}>{item.name}</Text>
                 <Text style={styles.foodQty}>x{item.quantity}</Text>

@@ -1,11 +1,11 @@
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { arrayUnion, doc, updateDoc } from 'firebase/firestore';
 import React, { useMemo } from 'react';
 import {
     Alert,
-    Image,
     Platform,
     SafeAreaView,
     ScrollView,
@@ -111,7 +111,7 @@ export default function AdminServiceOrderDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>DỊCH VỤ YÊU CẦU</Text>
           <View style={styles.serviceItem}>
-            <Image source={{ uri: serviceInfo?.image || 'https://via.placeholder.com/150' }} style={styles.serviceImg} />
+            <Image source={serviceInfo?.img || serviceInfo?.backupImg || 'https://via.placeholder.com/150'} style={styles.serviceImg} contentFit="cover" cachePolicy="memory-disk" />
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.serviceName}>{order.serviceName}</Text>
               <Text style={styles.shopName}>Đơn vị: {order.shopName}</Text>

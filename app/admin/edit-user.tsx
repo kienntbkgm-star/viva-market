@@ -7,7 +7,6 @@ import { doc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView, Platform,
     SafeAreaView, ScrollView, StyleSheet, Text, TextInput,
     TouchableOpacity, View
@@ -15,6 +14,37 @@ import {
 import { db } from '../../src/services/firebase';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
+// Cross-platform alert/confirm for web/mobile
+function crossAlert(title, message, buttons) {
+  if (Platform.OS === 'web') {
+    window.alert(`${title ? title + '\n' : ''}${message}`);
+    if (buttons && Array.isArray(buttons)) {
+      const okBtn = buttons.find(b => b.text?.toLowerCase() === 'ok' || b.text?.toLowerCase() === 'xác nhận');
+      if (okBtn && okBtn.onPress) okBtn.onPress();
+    }
+    return;
+  }
+  // Native
+  // eslint-disable-next-line no-undef
+  Alert.alert(title, message, buttons);
+}
+
+function crossConfirm(title, message, onConfirm, onCancel) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title ? title + '\n' : ''}${message}`)) {
+      if (onConfirm) onConfirm();
+    } else {
+      if (onCancel) onCancel();
+    }
+    return;
+  }
+  // Native
+  // eslint-disable-next-line no-undef
+  Alert.alert(title, message, [
+    { text: 'Hủy', onPress: onCancel, style: 'cancel' },
+    { text: 'Xác nhận', onPress: onConfirm, style: 'destructive' }
+  ]);
+}
 
 export default function EditUserScreen() {
 
@@ -92,10 +122,10 @@ export default function EditUserScreen() {
       if (resJson.success) {
         setFormData(prev => ({ ...prev, [field]: resJson.data.url }));
       } else {
-        Alert.alert("Lỗi", "Không thể upload ảnh lên ImgBB");
+        crossAlert("Lỗi", "Không thể upload ảnh lên ImgBB");
       }
     } catch (err) {
-      Alert.alert("Lỗi", "Quá trình upload thất bại");
+      crossAlert("Lỗi", "Quá trình upload thất bại");
     } finally {
       setUploadingField(null);
     }
@@ -103,7 +133,7 @@ export default function EditUserScreen() {
 
   const handleSave = async () => {
     if (!formData.name || !formData.phone) {
-      Alert.alert("Lỗi", "Tên và Số điện thoại không được để trống");
+      crossAlert("Lỗi", "Tên và Số điện thoại không được để trống");
       return;
     }
 
@@ -116,37 +146,29 @@ export default function EditUserScreen() {
       };
 
       await updateDoc(userRef, payload);
-      Alert.alert("Thành công", `Đã cập nhật User #${id}`, [
-        { text: "OK", onPress: () => router.back() }
-      ]);
+      crossAlert("Thành công", `Đã cập nhật User #${id}`);
+      router.back();
     } catch (err) {
-      Alert.alert("Lỗi cập nhật", err.message);
+      crossAlert("Lỗi cập nhật", err.message);
     }
   };
 
   const handleResetPassword = () => {
-    Alert.alert(
+    crossConfirm(
       "Reset Password",
       `Bạn chắc chắn muốn reset password của ${formData.name} về "123456"?`,
-      [
-        { text: "Hủy", onPress: () => {}, style: "cancel" },
-        {
-          text: "Xác nhận",
-          onPress: async () => {
-            try {
-              const hashedPassword = bcryptjs.hashSync('123456', 10);
-              const userRef = doc(db, 'users', id.toString());
-              await updateDoc(userRef, { password: hashedPassword });
-              
-              setFormData(prev => ({ ...prev, password: hashedPassword }));
-              Alert.alert("Thành công", "Password đã reset về '123456'");
-            } catch (err) {
-              Alert.alert("Lỗi", "Không thể reset password: " + err.message);
-            }
-          },
-          style: "destructive"
+      async () => {
+        try {
+          const hashedPassword = bcryptjs.hashSync('123456', 10);
+          const userRef = doc(db, 'users', id.toString());
+          await updateDoc(userRef, { password: hashedPassword });
+          setFormData(prev => ({ ...prev, password: hashedPassword }));
+          crossAlert("Thành công", "Password đã reset về '123456'");
+        } catch (err) {
+          crossAlert("Lỗi", "Không thể reset password: " + err.message);
         }
-      ]
+      },
+      () => {}
     );
   };
 

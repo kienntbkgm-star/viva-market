@@ -1,11 +1,11 @@
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection } from 'firebase/firestore';
 import React, { useMemo, useState } from 'react';
 import {
     Alert,
-    Image,
     Platform,
     SafeAreaView,
     ScrollView,
@@ -48,8 +48,9 @@ export default function ServiceDetailScreen() {
 
   // Ảnh hiển thị
   const displayImage = useMemo(() => {
-    return service.img || service.image || 'https://via.placeholder.com/300'; // Đã sửa để sử dụng service.image trực tiếp
+    return service.img || service.backupImg || 'https://via.placeholder.com/300';
   }, [service.img, service.image]);
+// ...existing code...
 
   // Giá dịch vụ (ưu tiên pricePromo)
   const price = useMemo(() => {
@@ -171,7 +172,7 @@ export default function ServiceDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Ảnh banner */}
         <View style={styles.imageContainer}>
-          <Image source={{ uri: displayImage }} style={styles.image} resizeMode="cover" />
+          <Image source={displayImage} style={styles.image} contentFit="cover" cachePolicy="memory-disk" />
         </View>
 
         {/* Khu vực thông tin cửa hàng + loại dịch vụ */}

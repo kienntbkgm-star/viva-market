@@ -1,11 +1,11 @@
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { arrayUnion, doc, updateDoc } from 'firebase/firestore';
 import React, { useMemo } from 'react';
 import {
     Alert,
-    Image,
     Platform,
     SafeAreaView,
     ScrollView,
@@ -407,8 +407,10 @@ export default function ShipperOrderDetailScreen() {
                 disabled={!canEdit || isRemoved}
               >
                 <Image 
-                  source={{ uri: item.img }} 
+                  source={item.img} 
                   style={[styles.foodImg, isRemoved && styles.removedImg]} 
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
                 />
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={[styles.foodName, isRemoved && styles.removedText]}>

@@ -1,0 +1,66 @@
+1. LỚP NỀN TẢNG (Foundation Layer)
+Đối tượng: TẤT CẢ MỌI NGƯỜI (Guest, User, Shop, Shipper, Admin). Mục đích: Để hiển thị giao diện chính, xem món, xem giá và đặt hàng.
+
+foods (Toàn bộ): Bắt buộc. Chủ Shop cũng cần xem món của quán khác để tham khảo hoặc mua ăn. Shipper cũng cần xem menu để mua.
+services (Toàn bộ): Bắt buộc. Để đặt dịch vụ.
+promos (Toàn bộ): Bắt buộc. Để áp mã giảm giá khi mua.
+itemType (Toàn bộ): Để lọc danh mục (Cơm, Phở...).
+system (Toàn bộ): Cấu hình phí ship, giờ hoạt động, hotline.
+users (Có lọc): Đây là điểm quan trọng.
+Để hiển thị tên quán và avatar quán trên thẻ món ăn, tất cả mọi người cần data của những user có role là "chủ shop".
+Logic tối ưu: Chỉ listen users có role == 'chủ shop'. Không cần load hàng nghìn user thường khác.
+2. LỚP CÁ NHÂN (Personal Layer)
+Đối tượng: TẤT CẢ MỌI NGƯỜI (Trừ Guest chưa có ID, nhưng Guest của bạn đã có ID tạm nên tính luôn). Mục đích: Xem lịch sử "Tôi đã mua gì".
+
+foodOrders (Của tôi): Chỉ nghe những đơn hàng mà userId == ID_Của_Tôi.
+serviceOrders (Của tôi): Chỉ nghe những đơn dịch vụ mà userId == ID_Của_Tôi.
+Vấn đề nảy sinh: Với Shop Owner và Shipper, họ vừa cần xem đơn "Của tôi" (để ăn), vừa cần xem đơn "Công việc" (để làm). Firestore xử lý việc listen 2 luồng trên cùng 1 collection đôi khi phức tạp.
+
+Giải pháp logic: Chúng ta sẽ bàn ở lớp 3.
+3. LỚP CÔNG VIỆC (Work Layer)
+Đối tượng: Chỉ dành cho Role đặc thù.
+
+A. Với SHOP OWNER (Chủ Quán)
+Ngoài việc đi mua hàng (Lớp 1 + 2), họ cần bán hàng:
+
+foodOrders (Đơn hàng đến):
+
+Họ cần nhận thông báo ngay khi có khách đặt món của họ.
+Thách thức: Họ cần nghe đơn có shopId == ID_Của_Tôi.
+Logic gộp: Shop Owner sẽ phải listen một tập hợp lớn hơn User thường. Thay vì chỉ nghe đơn "Của tôi", họ có thể phải nghe Toàn bộ đơn hàng trong ngày (hoặc dùng query phức tạp userId == Me OR shopId == Me).
+Khuyên dùng: Listen toàn bộ đơn hàng (hoặc lọc theo ngày hiện tại) để đảm bảo không sót đơn khách đặt và đơn mình mua.
+users (Mở rộng):
+
+Ngoài việc xem "Chủ shop" khác (Lớp 1), họ cần xem thông tin Shipper (để biết ai đến lấy hàng).
+Logic: Listen users có role là ['chủ shop', 'shipper', 'admin'].
+B. Với SHIPPER (Tài Xế)
+Ngoài việc đi mua hàng (Lớp 1 + 2), họ cần đi giao hàng:
+
+foodOrders (Sàn đơn hàng):
+
+Họ cần nhìn thấy các đơn đang pending (chờ nhận) hoặc confirmed (đã nhận) của toàn hệ thống để "tranh đơn".
+Logic: Shipper cần listen tất cả đơn hàng có trạng thái "Sẵn sàng".
+Lưu ý: Việc này bao hàm luôn cả nhu cầu xem lịch sử mua hàng của chính họ (nếu đơn họ mua cũng nằm trong luồng này, hoặc họ phải listen riêng).
+transactions (Ví tiền):
+
+Shipper cần xem biến động số dư, trừ chiết khấu.
+Logic: Listen transactions có userId == ID_Của_Tôi.
+users (Mở rộng):
+
+Họ cần thông tin Chủ shop (để đến lấy) và Khách hàng (để gọi điện giao).
+Logic: Shipper có thể cần quyền listen rộng hơn về user, hoặc hệ thống phải copy SĐT/Địa chỉ khách hàng thẳng vào đơn hàng (foodOrders) để Shipper không cần query bảng users quá nhiều.
+4. LỚP QUẢN TRỊ (Admin Layer)
+Đối tượng: Admin. Logic: Nghe tất cả. Không cần bàn cãi vì họ cần kiểm soát toàn bộ.
+
+TỔNG KẾT LOGIC (Bảng phân vai)
+Dưới đây là bảng phân tích logic cuối cùng để bạn dễ hình dung:
+
+Collection	Guest / User Thường	Chủ Shop (Vừa bán vừa mua)	Shipper (Vừa ship vừa mua)
+foods	Nghe Hết (để mua)	Nghe Hết (để mua & tham khảo)	Nghe Hết (để mua)
+services	Nghe Hết	Nghe Hết	Nghe Hết
+promos	Nghe Hết	Nghe Hết	Nghe Hết
+system	Nghe Hết	Nghe Hết	Nghe Hết
+users	Chỉ nghe Chủ Shop (để hiện tên quán)	Nghe Chủ Shop + Shipper	Nghe Chủ Shop + Admin
+foodOrders	Chỉ nghe đơn Của mình	Nghe đơn Của mình + Đơn khách đặt	Nghe đơn Của mình + Đơn cần ship
+transactions	Không cần	Không cần (hoặc cần nếu có ví)	Nghe ví Của mình
+Kết luận quan trọng: Bạn hoàn toàn đúng. Việc tách role không có nghĩa là cắt bỏ quyền lợi "mua hàng" của Shop/Shipper. Nó chỉ là việc cộng thêm trách nhiệm lắng nghe dữ liệu công việc vào luồng dữ liệu cá nhân của họ.

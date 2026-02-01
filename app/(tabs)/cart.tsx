@@ -1,12 +1,12 @@
 // @ts-nocheck
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, doc, increment, updateDoc } from 'firebase/firestore';
 import React, { useMemo, useState } from 'react';
 import {
     Alert,
     FlatList,
-    Image,
     Modal,
     Platform,
     SafeAreaView,
@@ -148,6 +148,7 @@ export default function CartScreen() {
       
       const newOrder = {
         orderId: orderId,
+        shopIds: [...new Set(cleanItems.map(i => Number(i.shopId)))],
         userId: currentUser ? currentUser.id : Date.now(),
         userName: (isGuestUser || !currentUser) ? gName : currentUser.name,
         userPhone: (isGuestUser || !currentUser) ? gPhone : currentUser.phone,
@@ -241,8 +242,10 @@ export default function CartScreen() {
         renderItem={({ item }) => (
           <View style={styles.cartItem}>
             <Image 
-                source={{ uri: item.img || (Array.isArray(item.image) ? item.image[0] : item.image) }} 
-                style={styles.itemImage} 
+              source={item.img || item.backupImg || 'https://via.placeholder.com/150'}
+              style={styles.itemImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
             />
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.itemName}>{item.name}</Text>

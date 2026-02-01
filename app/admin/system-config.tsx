@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { doc, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
@@ -167,7 +168,10 @@ export default function SystemConfigScreen() {
             {formData.welcomeImage.map((img, index) => (
                 <View key={index} style={{marginBottom: 10}}>
                     <Text style={styles.label}>Ảnh {index + 1} (URL)</Text>
-                    <TextInput style={styles.input} value={img} onChangeText={t => updateWelcomeImage(index, t)} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Image source={{ uri: img }} style={{ width: 60, height: 60, borderRadius: 8, marginRight: 8 }} contentFit="cover" cachePolicy="memory-disk" />
+                        <TextInput style={styles.input} value={img} onChangeText={t => updateWelcomeImage(index, t)} />
+                      </View>
                 </View>
             ))}
           </View>

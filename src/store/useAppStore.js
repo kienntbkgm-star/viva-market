@@ -2,14 +2,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import bcryptjs from 'bcryptjs';
 import {
-    arrayUnion,
-    collection,
-    doc,
-    getDoc,
-    onSnapshot,
-    query,
-    setDoc,
-    updateDoc
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  setDoc,
+  updateDoc,
+  where
 } from 'firebase/firestore';
 import { create } from 'zustand';
 import { db } from '../services/firebase';
@@ -18,14 +20,50 @@ import { db } from '../services/firebase';
  * useAppStore - Quản lý dữ liệu toàn cục cho dự án VivaMarket
  */
 export const useAppStore = create((set, get) => ({
+  // =============================
+  // USER DOC LISTENER (REALTIME STATUS)
+  // =============================
+  userDocUnsub: null,
+
+  /**
+   * Lắng nghe realtime document user của chính mình sau khi login thành công.
+   * - Chỉ gọi sau khi đã xác thực (login).
+   * - Nếu doc user bị đổi status sang 'disable' (bị admin khoá), sẽ tự động logout.
+   * - Khi logout sẽ huỷ listener này để tránh rò rỉ bộ nhớ.
+   */
+  listenCurrentUserDoc: () => {
+    const { currentUser, logout } = get();
+    if (!currentUser || !currentUser.id) return;
+    // Nếu đã có listener cũ thì huỷ trước khi tạo mới
+    if (get().userDocUnsub) get().userDocUnsub();
+    // Đặt listener cho doc users/{userId} của chính user
+    const unsub = onSnapshot(doc(db, 'users', currentUser.id.toString()), (docSnap) => {
+      if (!docSnap.exists()) return;
+      const userData = { id: docSnap.id, ...docSnap.data() };
+      set({ currentUser: userData });
+      // Nếu bị khoá tài khoản thì tự động logout
+      if (userData.status === 'disable') {
+        alert('Tài khoản của bạn đã bị khoá!');
+        logout();
+      }
+    });
+    set({ userDocUnsub: unsub });
+  },
+
+  /**
+   * Huỷ listener doc user khi logout hoặc đổi tài khoản.
+   */
+  clearCurrentUserDocListener: () => {
+    if (get().userDocUnsub) {
+      get().userDocUnsub();
+      set({ userDocUnsub: null });
+    }
+  },
   // ==========================================
   // 1. KHO CHỨA DỮ LIỆU (STATE)
   // ==========================================
   foodOrders: [],
   foods: [],
-  goodOrders: [],
-  goods: [],
-  itemType: [],
   promos: [],
   serviceOrders: [],
   services: [],
@@ -293,8 +331,18 @@ export const useAppStore = create((set, get) => ({
   },
 
   listenAllData: () => {
-    console.log("--- Kết nối Realtime Firestore (Full Collections) ---");
+    const { currentUser } = get();
+    const userRole = currentUser?.role || 'guest';
+    const userId = currentUser?.id;
 
+    console.log(`🎧 [listenAllData] Starting listeners with:`, { userId, userRole, userExists: !!currentUser });
+    console.log(`🎧 [listenAllData] Role: ${userRole}, UserId: ${userId}`);
+
+    const unsubscribers = [];
+
+    // ===== COLLECTIONS LISTEN BỞI TẤT CẢ ROLE =====
+
+    // foods - ALL roles
     const unsubFoods = onSnapshot(query(collection(db, 'foods')), (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       const currentHour = new Date().getHours();
@@ -312,85 +360,262 @@ export const useAppStore = create((set, get) => ({
       });
       set({ foods: sortedData, isLoading: false });
     });
+    unsubscribers.push(unsubFoods);
 
-    const unsubUsers = onSnapshot(query(collection(db, 'users')), (snap) => {
-      set({ users: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
-
-    const unsubSystem = onSnapshot(query(collection(db, 'system')), (snap) => {
-      set({ system: snap.docs[0]?.data() || null });
-    });
-
+    // promos - ALL roles
     const unsubPromos = onSnapshot(query(collection(db, 'promos')), (snap) => {
       set({ promos: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
     });
+    unsubscribers.push(unsubPromos);
 
-    const unsubFoodOrders = onSnapshot(query(collection(db, 'foodOrders')), (snap) => {
-      set({ foodOrders: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+    // system - ALL roles
+    const unsubSystem = onSnapshot(query(collection(db, 'system')), (snap) => {
+      set({ system: snap.docs[0]?.data() || null });
     });
+    unsubscribers.push(unsubSystem);
 
-    const unsubGoods = onSnapshot(query(collection(db, 'goods')), (snap) => {
-      set({ goods: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
+    // ===== USERS: FILTER BY ROLE =====
+    let unsubUsers;
+    if (userRole === 'admin') {
+      // Admin: listen ALL users
+      unsubUsers = onSnapshot(query(collection(db, 'users')), (snap) => {
+        set({ users: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      });
+    } else if (userRole === 'guest') {
+      // Guest (không login): không listen users
+      console.log('🚫 Guest không listen users');
+    } else {
+      // Chủ Shop, Shipper: filter những shop/shipper/admin (để hiển thị)
+      unsubUsers = onSnapshot(
+        query(collection(db, 'users'), where('role', 'in', ['chủ shop', 'shipper', 'admin'])),
+        (snap) => {
+          set({ users: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+        }
+      );
+    }
+    if (unsubUsers) unsubscribers.push(unsubUsers);
 
-    const unsubGoodOrders = onSnapshot(query(collection(db, 'goodOrders')), (snap) => {
-      set({ goodOrders: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
+    // ===== SERVICES: ALL roles EXCEPT Admin =====
+    let unsubServices;
+      unsubServices = onSnapshot(query(collection(db, 'services')), (snap) => {
+        set({ services: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      });
+      unsubscribers.push(unsubServices);
+      unsubServices = onSnapshot(query(collection(db, 'services')), (snap) => {
+        set({ services: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      });
+      unsubscribers.push(unsubServices);
 
-    const unsubItemType = onSnapshot(query(collection(db, 'itemType')), (snap) => {
-      set({ itemType: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
+    // ===== FOODORDERS: ROLE-BASED FILTERING =====
+    let unsubFoodOrders;
+    if (userRole === 'admin') {
+      // Admin: ALL foodOrders
+      unsubFoodOrders = onSnapshot(query(collection(db, 'foodOrders')), (snap) => {
+        set({ foodOrders: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      });
+    } else if (userRole === 'chủ shop') {
+      // Chủ Shop: userId == Me OR shopIds contains Me
+      // Tách thành 2 listeners vì Firestore không hỗ trợ OR
+      const unsubFoodOrdersAsCustomer = onSnapshot(
+        query(collection(db, 'foodOrders'), where('userId', '==', userId)),
+        (snap) => {
+          const customerOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          // Lấy đơn của shop từ state (nếu đã set trước)
+          const { foodOrders } = get();
+          const shopOrders = foodOrders.filter(o => o.shopIds?.includes(userId));
+          // Merge và remove duplicates
+          const merged = [...customerOrders, ...shopOrders].reduce((acc, order) => {
+            if (!acc.find(o => o.id === order.id)) acc.push(order);
+            return acc;
+          }, []);
+          set({ foodOrders: merged });
+        }
+      );
+      const unsubFoodOrdersAsShop = onSnapshot(
+        query(collection(db, 'foodOrders'), where('shopIds', 'array-contains', userId)),
+        (snap) => {
+          const shopOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const { foodOrders } = get();
+          const customerOrders = foodOrders.filter(o => o.userId === userId);
+          const merged = [...customerOrders, ...shopOrders].reduce((acc, order) => {
+            if (!acc.find(o => o.id === order.id)) acc.push(order);
+            return acc;
+          }, []);
+          set({ foodOrders: merged });
+        }
+      );
+      unsubscribers.push(unsubFoodOrdersAsCustomer, unsubFoodOrdersAsShop);
+    } else if (userRole === 'shipper') {
+      // Shipper: userId == Me OR status == 'pending' OR shipperId == Me
+      // Track từ 3 sources để merge (Firestore không hỗ trợ OR)
+      const shipperFoodOrdersSources = {
+        customer: [],
+        pending: [],
+        assigned: []
+      };
 
-    const unsubServices = onSnapshot(query(collection(db, 'services')), (snap) => {
-      set({ services: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
+      const mergeFoodOrders = () => {
+        const all = [
+          ...shipperFoodOrdersSources.customer,
+          ...shipperFoodOrdersSources.pending,
+          ...shipperFoodOrdersSources.assigned
+        ];
+        const merged = all.reduce((acc, order) => {
+          if (!acc.find(o => o.id === order.id)) acc.push(order);
+          return acc;
+        }, []);
+        set({ foodOrders: merged });
+      };
 
-    const unsubServiceOrders = onSnapshot(query(collection(db, 'serviceOrders')), (snap) => {
-      set({ serviceOrders: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
+      const unsubFoodOrdersAsCustomer = onSnapshot(
+        query(collection(db, 'foodOrders'), where('userId', '==', userId)),
+        (snap) => {
+          shipperFoodOrdersSources.customer = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          mergeFoodOrders();
+        }
+      );
+      const unsubFoodOrdersPending = onSnapshot(
+        query(collection(db, 'foodOrders'), where('status', '==', 'pending')),
+        (snap) => {
+          shipperFoodOrdersSources.pending = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          mergeFoodOrders();
+        }
+      );
+      const unsubFoodOrdersAssigned = onSnapshot(
+        query(collection(db, 'foodOrders'), where('shipperId', '==', userId)),
+        (snap) => {
+          shipperFoodOrdersSources.assigned = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          mergeFoodOrders();
+        }
+      );
+      unsubscribers.push(unsubFoodOrdersAsCustomer, unsubFoodOrdersPending, unsubFoodOrdersAssigned);
+    } else {
+      // Guest: userId == Me
+      unsubFoodOrders = onSnapshot(
+        query(collection(db, 'foodOrders'), where('userId', '==', userId || 0)),
+        (snap) => {
+          set({ foodOrders: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+        }
+      );
+      unsubscribers.push(unsubFoodOrders);
+    }
 
-    const unsubTransactions = onSnapshot(query(collection(db, 'transactions')), (snap) => {
+    // ===== SERVICEORDERS: ROLE-BASED FILTERING =====
+    let unsubServiceOrders;
+    if (userRole === 'admin') {
+      // Admin: ALL serviceOrders
+      unsubServiceOrders = onSnapshot(query(collection(db, 'serviceOrders')), (snap) => {
+        set({ serviceOrders: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      });
+    } else {
+      // Guest, Chủ Shop, Shipper: userId == Me
+      unsubServiceOrders = onSnapshot(
+        query(collection(db, 'serviceOrders'), where('userId', '==', userId || 0)),
+        (snap) => {
+          set({ serviceOrders: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+        }
+      );
+    }
+    unsubscribers.push(unsubServiceOrders);
+
+    // ===== TRANSACTIONS: SHIPPER & ADMIN ONLY =====
+    let unsubTransactions;
+    if (userRole === 'admin') {
+      // Admin: ALL transactions
+      unsubTransactions = onSnapshot(query(collection(db, 'transactions')), (snap) => {
         set({ transactions: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
+      });
+      unsubscribers.push(unsubTransactions);
+    } else if (userRole === 'shipper') {
+      // Shipper: userId == Me (của mình)
+      unsubTransactions = onSnapshot(
+        query(collection(db, 'transactions'), where('userId', '==', userId)),
+        (snap) => {
+          set({ transactions: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+        }
+      );
+      unsubscribers.push(unsubTransactions);
+    } else {
+      console.log('🚫 Guest/Chủ Shop không listen transactions');
+    }
 
-    // 🆕 Listener cho onlineLog (user online/offline tracking)
-    const unsubOnlineLog = onSnapshot(query(collection(db, 'onlineLog')), (snap) => {
-      set({ onlineLog: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
-    });
+    // ===== ONLINELOG: ADMIN ONLY =====
+    let unsubOnlineLog;
+    if (userRole === 'admin') {
+      unsubOnlineLog = onSnapshot(query(collection(db, 'onlineLog')), (snap) => {
+        set({ onlineLog: snap.docs.map(d => ({ id: d.id, ...d.data() })) });
+      });
+      unsubscribers.push(unsubOnlineLog);
+    } else {
+      console.log('🚫 Non-admin không listen onlineLog');
+    }
 
+    // Return cleanup function
     return () => {
-      unsubFoods(); unsubSystem(); unsubUsers(); unsubPromos();
-      unsubFoodOrders(); unsubGoods(); unsubGoodOrders();
-      unsubItemType(); unsubServices(); unsubServiceOrders();
-      unsubTransactions(); unsubOnlineLog();
+      unsubscribers.forEach(unsub => {
+        if (unsub) unsub();
+      });
     };
   },
 
   login: async (phoneNumber, password, expoToken) => {
-    const allUsers = get().users;
-    const userFound = allUsers.find(u => u.phone === phoneNumber);
+    console.log('🔐 [Store] login() called with phone:', phoneNumber);
     
-    if (!userFound) return { success: false, message: 'Sai tài khoản hoặc mật khẩu!' };
+    // Query Firestore trực tiếp để tìm user (không rely vào state)
+    console.log('📱 [Store] Querying Firestore for phone:', phoneNumber);
+    const q = query(collection(db, 'users'), where('phone', '==', phoneNumber));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      console.log('❌ [Store] User not found in Firestore!');
+      return { success: false, message: 'Sai tài khoản hoặc mật khẩu!' };
+    }
+    
+    const userFound = snapshot.docs[0].data();
+    userFound.id = snapshot.docs[0].id; // Add document ID
+    console.log('🔍 [Store] User found:', { id: userFound.id, phone: userFound.phone, role: userFound.role });
     
     // Tất cả password đã được hash trên server → dùng bcryptjs compare
+    console.log('🔑 [Store] Checking password...');
     const isPasswordMatch = userFound.password ? bcryptjs.compareSync(password, userFound.password) : false;
+    console.log('🔑 [Store] Password match:', isPasswordMatch);
     
-    if (!isPasswordMatch) return { success: false, message: 'Sai tài khoản hoặc mật khẩu!' };
-    if (userFound.status === 'disable') return { success: false, message: 'Tài khoản đã bị khóa!' };
+    if (!isPasswordMatch) {
+      console.log('❌ [Store] Password mismatch!');
+      return { success: false, message: 'Sai tài khoản hoặc mật khẩu!' };
+    }
+    
+    if (userFound.status === 'disable') {
+      console.log('❌ [Store] Account disabled!');
+      return { success: false, message: 'Tài khoản đã bị khóa!' };
+    }
+    
+    console.log('✅ [Store] Setting currentUser:', { id: userFound.id, role: userFound.role });
     set({ currentUser: userFound, isGuest: false, guestId: null });
     
     // Lưu userId vào AsyncStorage để restore session
     await AsyncStorage.setItem('logged_user_id', userFound.id.toString());
+    console.log('💾 [Store] Saved user ID to storage:', userFound.id);
     
     if (expoToken && userFound.expoToken !== expoToken) {
       try {
+        console.log('📱 [Store] Updating expoToken...');
         await updateDoc(doc(db, 'users', userFound.id.toString()), { expoToken });
-      } catch (err) { console.error("Lỗi cập nhật Token:", err); }
+        console.log('✅ [Store] ExpoToken updated');
+      } catch (err) { 
+        console.error("⚠️ [Store] Error updating Token:", err); 
+      }
     }
     
     // Ghi log online sau khi login thành công
+    console.log('📝 [Store] Logging online...');
     get().logOnlineToLocal();
+
+    // Sau khi login thành công, bắt đầu listen realtime doc user của chính mình
+    // Điều này giúp app tự động phát hiện khi tài khoản bị khoá (status = 'disable')
+    get().listenCurrentUserDoc();
     
+    console.log('✅ [Store] Login complete!');
     return { success: true };
   },
 
@@ -442,6 +667,8 @@ export const useAppStore = create((set, get) => ({
       await AsyncStorage.removeItem('guest_user_id');
       
       set({ currentUser: null, cart: [], isGuest: false, guestId: null });
+      // Khi logout, huỷ listener doc user để tránh rò rỉ bộ nhớ
+      get().clearCurrentUserDocListener();
       return { success: true };
     } catch (err) {
       set({ currentUser: null, cart: [] });

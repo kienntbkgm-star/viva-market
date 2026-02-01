@@ -12,10 +12,84 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
+import { TextInput } from 'react-native';
 import { sendNotification } from '../src/components/Notification';
 import { db } from '../src/services/firebase';
 import { useAppStore } from '../src/store/useAppStore';
 import { COLORS, GlobalStyles, VALUES } from '../src/styles/GlobalStyles';
+
+// --- COMPONENT UPLOAD ẢNH ---
+function ImageUploader() {
+  const [image, setImage] = React.useState(null);
+  const [uploading, setUploading] = React.useState(false);
+  const [downloadUrl, setDownloadUrl] = React.useState('');
+  const [fileName, setFileName] = React.useState('');
+
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setImage(result.assets[0].uri);
+      setFileName(result.assets[0].fileName || `image_${Date.now()}.jpg`);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!image) return;
+    setUploading(true);
+    try {
+      const response = await fetch(image);
+      const blob = await response.blob();
+      const storage = getStorage();
+      const storageRef = ref(storage, `uploads/${fileName}`);
+      await uploadBytes(storageRef, blob);
+      const url = await getDownloadURL(storageRef);
+      setDownloadUrl(url);
+    } catch (err) {
+      alert('Lỗi upload: ' + err.message);
+    }
+    setUploading(false);
+  };
+
+  return (
+    <View style={{ alignItems: 'center', width: '100%' }}>
+      <TouchableOpacity style={{ backgroundColor: '#eee', padding: 10, borderRadius: 8, marginBottom: 8 }} onPress={pickImage}>
+        <Text>Chọn ảnh</Text>
+      </TouchableOpacity>
+      {image && (
+        <Image source={image} style={{ width: 120, height: 120, borderRadius: 8, marginBottom: 8 }} contentFit="cover" cachePolicy="memory-disk" />
+      )}
+      {image && (
+        <TextInput value={fileName} onChangeText={setFileName} style={{ borderWidth: 1, borderColor: '#ccc', borderRadius: 6, padding: 6, marginBottom: 8, width: 180, textAlign: 'center' }} />
+      )}
+      <TouchableOpacity style={{ backgroundColor: COLORS.primary, padding: 10, borderRadius: 8, marginBottom: 8 }} onPress={handleUpload} disabled={uploading || !image}>
+        <Text style={{ color: '#fff' }}>{uploading ? 'Đang upload...' : 'Upload lên Firebase'}</Text>
+      </TouchableOpacity>
+      {downloadUrl ? (
+        <View style={{ alignItems: 'center', marginTop: 8 }}>
+          <Text selectable style={{ color: '#333', fontSize: 13, marginBottom: 4 }}>URL ảnh:</Text>
+          <Text selectable style={{ color: '#007aff', fontSize: 13, marginBottom: 8, textAlign: 'center' }}>{downloadUrl}</Text>
+          <TouchableOpacity style={{ backgroundColor: '#eee', padding: 6, borderRadius: 6 }} onPress={async () => {
+            if (Platform.OS === 'web') {
+              await navigator.clipboard.writeText(downloadUrl);
+            } else {
+              Clipboard.setString(downloadUrl);
+            }
+          }}>
+            <Text>📋 Copy URL</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 // --- THÔNG TIN JSONBIN ---
 const MASTER_KEY = '$2a$10$Z2592l1Fa5Nci41xttPiH.1GAoFIHH5m6pghbiCZBet/UEyP.SLG6';
@@ -25,13 +99,10 @@ const BIN_ID = '696a127c43b1c97be9345fb0';
 const COLLECTIONS = [
   { id: 'system', name: 'System', icon: '⚙️' },
   { id: 'promos', name: 'Promotions', icon: '🎯' },
-  { id: 'itemType', name: 'Item Types', icon: '🏷️' },
   { id: 'foods', name: 'Foods', icon: '🍔' },
-  { id: 'goods', name: 'Goods', icon: '🛍️' },
   { id: 'services', name: 'Services', icon: '💼' },
   { id: 'users', name: 'Users', icon: '👥' },
   { id: 'foodOrders', name: 'Food Orders', icon: '📝' },
-  { id: 'goodOrders', name: 'Good Orders', icon: '📦' },
   { id: 'serviceOrders', name: 'Service Orders', icon: '📋' },
   { id: 'transactions', name: 'Transactions', icon: '💰' }
 ];
@@ -50,9 +121,6 @@ export default function DebugDataScreen() {
   const {
     foodOrders,
     foods,
-    goodOrders,
-    goods,
-    itemType,
     promos,
     serviceOrders,
     services,
@@ -108,9 +176,7 @@ export default function DebugDataScreen() {
     switch (selectedCollection) {
       case 'system': return system;
       case 'promos': return promos;
-      case 'itemType': return itemType;
       case 'foods': return foods;
-      case 'goods': return goods;
       case 'services': return services;
       case 'users': return users;
       case 'foodOrders': return foodOrders;
@@ -133,13 +199,10 @@ export default function DebugDataScreen() {
     switch (id) {
       case 'system': return system;
       case 'promos': return promos;
-      case 'itemType': return itemType;
       case 'foods': return foods;
-      case 'goods': return goods;
       case 'services': return services;
       case 'users': return users;
       case 'foodOrders': return foodOrders;
-      case 'goodOrders': return goodOrders;
       case 'serviceOrders': return serviceOrders;
       case 'transactions': return transactions;
       default: return null;
@@ -172,18 +235,15 @@ export default function DebugDataScreen() {
     }
   };
 
-  // --- HÀM COPY FULL DATABASE (11 COLLECTIONS) ---
+  // --- HÀM COPY FULL DATABASE (8 COLLECTIONS) ---
   const handleCopyFullDatabase = async () => {
     const fullDatabase = {
       system,
       promos,
-      itemType,
       foods,
-      goods,
       services,
       users,
       foodOrders,
-      goodOrders,
       serviceOrders,
       transactions
     };
@@ -209,18 +269,15 @@ export default function DebugDataScreen() {
     }
   };
 
-  // --- HÀM SAO LƯU TOÀN BỘ DỮ LIỆU (FULL BACKUP 11 DANH MỤC) ---
+  // --- HÀM SAO LƯU TOÀN BỘ DỮ LIỆU (8 DANH MỤC) ---
   const handleFullBackup = async () => {
     const dataToBackup = {
       system,
       promos,
-      itemType,
       foods,
-      goods,
       services,
       users,
       foodOrders,
-      goodOrders,
       serviceOrders,
       transactions
     };
@@ -383,14 +440,14 @@ export default function DebugDataScreen() {
             </View>
           ) : null}
 
-          {/* JSON Data Viewer */}
-          <View style={[styles.jsonWrapper, { borderRadius: VALUES.borderRadius }]}>
-            <ScrollView style={styles.scroll}>
-              <Text selectable={true} style={styles.jsonText}>
-                {JSON.stringify(getSelectedCollectionData(), null, 2)}
-              </Text>
-            </ScrollView>
+
+          {/* Upload Ảnh lên Firebase Storage */}
+          <View style={[styles.jsonWrapper, { borderRadius: VALUES.borderRadius, alignItems: 'center', padding: 16 }]}> 
+            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>Upload ảnh lên Firebase Storage</Text>
+            <ImageUploader />
           </View>
+
+ 
 
           {/* Notification Section */}
           <View style={styles.notificationSection}>

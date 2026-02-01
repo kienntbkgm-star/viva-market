@@ -30,7 +30,7 @@ export default function RootLayout() {
     setMounted(true); // Đánh dấu đã mount để tránh lỗi render lần đầu
     const unsubscribe = listenAllData();
     return () => unsubscribe && unsubscribe();
-  }, []);
+  }, [currentUser?.id]); // Re-listen khi user thay đổi (login/logout)
 
   // Reset trạng thái ready của shipper và shop owner mỗi ngày khi app mở
   useEffect(() => {

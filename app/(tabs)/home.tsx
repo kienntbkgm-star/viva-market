@@ -1,13 +1,13 @@
 // FILE: app/(tabs)/index.tsx (hoặc home.tsx)
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
     Alert,
     Dimensions,
     FlatList,
-    Image,
     ListRenderItem,
     Platform,
     SafeAreaView,
@@ -38,7 +38,7 @@ interface FoodItem {
     type: string;
     shopId?: string | number;
     img?: string;
-    image?: string[];
+
     pricePromo: number;
     priceNormal: number;
     effectiveStatus?: string;
@@ -120,7 +120,11 @@ export default function HomeScreen() {
         ];
     }, [foods, users]);
 
-    const filterTabs = ['Tất cả', 'đồ ăn', 'đồ uống'];
+    const filterTabs = useMemo(() => {
+        // Generate filter tabs dynamically from foods data
+        const types = new Set(foods.map(f => f.type).filter(Boolean));
+        return ['Tất cả', ...Array.from(types).sort()];
+    }, [foods]);
     
     const filteredData = useMemo(() => {
         return foods
@@ -204,8 +208,10 @@ export default function HomeScreen() {
             >
                 <View style={{ position: 'relative' }}>
                     <Image
-                        source={{ uri: item.img || (item.image && item.image[0]) || 'https://via.placeholder.com/150' }}
+                        source={item.img || item.backupImg || 'https://via.placeholder.com/150'}
                         style={styles.cardImage}
+                        contentFit="cover"
+                        cachePolicy="memory-disk"
                     />
                     {selectedShop === 'all' && (
                         <View style={styles.shopBadge}>

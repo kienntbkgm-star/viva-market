@@ -1,7 +1,8 @@
 // @ts-nocheck
+import { Image } from 'expo-image';
 import { Redirect, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MyButton, MyInput } from '../src/components/MyUI';
 import { useAppStore } from '../src/store/useAppStore';
@@ -23,14 +24,22 @@ export default function LoginScreen() {
     const finalPhone = customPhone || phone;
     const finalPass = customPass || password;
 
+    console.log('🔐 [Login] Attempting login with:', { phone: finalPhone });
+    
     if (finalPhone.length < 10) {
+        console.log('❌ [Login] Phone invalid:', finalPhone);
         return Alert.alert("Lỗi", "Số điện thoại không hợp lệ");
     }
     
+    console.log('📞 [Login] Calling login function...');
     const result = await login(finalPhone, finalPass, expoToken);
+    console.log('📞 [Login] Result:', result);
+    
     if (result.success) {
+        console.log('✅ [Login] Success! Redirecting to home');
         router.replace('/(tabs)/home');
     } else {
+        console.log('❌ [Login] Failed:', result.message);
         Alert.alert("Lỗi", result.message);
     }
   };
@@ -70,7 +79,7 @@ export default function LoginScreen() {
     { label: 'BÁCH HÓA XANH', phone: '0385756271', pass: 'Kien1234', color: '#27AE60' }, // ID 207 - Nguyễn Thị Nữ
     { label: 'GRABFOOD', phone: '0979934882', pass: 'Kien1234', color: '#E67E22' },   // ID 208 - Nguyễn Thị Diễm Phượng
     { label: 'NOWFOOD', phone: '0988276559', pass: 'Kien1234', color: '#16A085' },    // ID 209 - Nguyễn Văn Dũng
-    { label: 'USER', phone: '0931837170', pass: 'Kien1234', color: '#3498DB' },       // ID 213
+    { label: 'USER', phone: '0931837170', pass: 'Kien1234', color: '#3498DB' },         // ID 213
     { label: 'SHIPPER 1', phone: '0988276550', pass: 'Kien1234', color: '#1ABC9C' },  // ID 210
     { label: 'SHIPPER 2', phone: '0988276551', pass: 'Kien1234', color: '#2ECC71' },  // ID 211
     { label: 'SHIPPER 3', phone: '0988276552', pass: 'Kien1234', color: '#52C9A6' },  // ID 212
@@ -82,7 +91,9 @@ export default function LoginScreen() {
         <View style={{ width: '100%', marginTop: 20 }}>
           <Image 
             source={require('../src/assets/onboardImage.png')} 
-            style={{ width: '100%', height: 200, resizeMode: 'contain' }} 
+            style={{ width: '100%', height: 200 }} 
+            contentFit="contain"
+            cachePolicy="memory-disk"
           />
         </View>
 

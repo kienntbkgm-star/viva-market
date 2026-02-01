@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import React, { useMemo } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAppStore } from '../../src/store/useAppStore';
-import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
+import { GlobalStyles } from '../../src/styles/GlobalStyles';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -62,6 +62,7 @@ export default function AdminDashboard() {
   const adminMenu = [
     { id: 'products', title: 'Quản lý Món ăn', subtitle: `${activeFoods} món đang bán`, icon: 'restaurant-menu', color: '#E67E22', path: '/admin/products' },
     { id: 'services', title: 'Quản lý Dịch vụ', subtitle: 'Danh sách dịch vụ', icon: 'build', color: '#9B59B6', path: '/admin/services' },
+    { id: 'promos', title: 'Quản lý Khuyến mãi', subtitle: `${promos?.length || 0} khuyến mãi`, icon: 'local-offer', color: '#F39C12', path: '/admin/promos' },
     { id: 'food-orders', title: 'Đơn Món ăn', subtitle: `${stats.foodOrderCount} đơn mới`, icon: 'restaurant', color: '#E67E22', path: '/admin/orders' },
     { id: 'service-orders', title: 'Đơn Dịch vụ', subtitle: `${stats.serviceOrderCount} đơn mới`, icon: 'home-repair-service', color: '#9B59B6', path: '/admin/service-orders' },
     { id: 'users', title: 'Quản lý Người dùng', subtitle: `${totalUsers} tài khoản`, icon: 'people', color: '#16A085', path: '/admin/users' },
@@ -77,9 +78,6 @@ export default function AdminDashboard() {
           <Text style={styles.headerTitle}>Quản trị viên</Text>
           <Text style={styles.headerSub}>Hệ thống vận hành chung cư</Text>
         </View>
-        <TouchableOpacity style={styles.profileBtn}>
-          <Ionicons name="person-circle" size={45} color={COLORS.primary} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 20 }}>

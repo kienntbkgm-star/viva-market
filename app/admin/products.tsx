@@ -3,23 +3,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import * as XLSX from 'xlsx';
 
@@ -65,9 +65,6 @@ export default function AdminProductsScreen() {
           .map(opt => `${opt.name} (+${opt.price}k)`)
           .join(', ');
 
-        // Image array join thành string ngăn cách bởi xuống dòng
-        const imagesString = (item.image || []).join('\n');
-
         // RETURN OBJECT VỚI KEY GIỐNG HỆT FIREBASE
         return {
           id: item.id,
@@ -83,7 +80,7 @@ export default function AdminProductsScreen() {
           orderCount: item.orderCount || 0,
           index: item.index || 0,
           img: item.img || '',          // Ảnh chính (thumbnail)
-          image: imagesString,          // Album ảnh
+          // image: imagesString,          // Album ảnh
           option: optionsString,        // Tùy chọn (đã format string)
         };
       });
@@ -166,13 +163,7 @@ export default function AdminProductsScreen() {
         
         const docRef = doc(db, "foods", docId);
 
-        // Xử lý Image Array (Split theo dấu xuống dòng hoặc phẩy)
-        let imageList = [];
-        if (row["image"]) {
-            imageList = row["image"].toString().split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
-        } else if (row["img"]) {
-            imageList = [row["img"]];
-        }
+          // Không còn xử lý image array, chỉ dùng img
 
         // Xử lý Options (Parse từ format "Tên (+Giá k)")
         let optionList = [];
@@ -206,7 +197,7 @@ export default function AdminProductsScreen() {
           orderCount: Number(row["orderCount"]) || 0,
           index: Number(row["index"]) || 0,
           img: row["img"] || "",
-          image: imageList,
+            // image: imageList,
           option: optionList,
           effectiveStatus: row["status"] || 'enable', // Đồng bộ status
           isOutOfTime: false 
@@ -248,7 +239,7 @@ export default function AdminProductsScreen() {
         style={[styles.productCard, !isActive && styles.disabledCard]}
         onPress={() => router.push({ pathname: '/admin/edit-food', params: { id: item.id } })}
       >
-        <Image source={{ uri: item.img }} style={styles.productImg} />
+        <Image source={item.img || item.backupImg || 'https://via.placeholder.com/150'} style={styles.productImg} contentFit="cover" cachePolicy="memory-disk" />
         
         <View style={styles.productInfo}>
           <View style={styles.rowBetween}>

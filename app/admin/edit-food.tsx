@@ -25,6 +25,7 @@ export default function EditFoodScreen() {
   const foods = useAppStore((state) => state.foods);
 
   const [uploading, setUploading] = useState(false);
+  const [uploadingBackup, setUploadingBackup] = useState(false);
   const [options, setOptions] = useState([]);
   const [editingOption, setEditingOption] = useState(null);
   const [optionForm, setOptionForm] = useState({
@@ -38,6 +39,7 @@ export default function EditFoodScreen() {
     id: null,
     name: '',
     img: '',
+    backupImg: '',
     priceNormal: '',
     pricePromo: '',
     shopId: '',
@@ -57,6 +59,7 @@ export default function EditFoodScreen() {
           id: f.id,
           name: f.name || '',
           img: f.img || '',
+          backupImg: f.backupImg || '',
           priceNormal: f.priceNormal?.toString() || '',
           pricePromo: f.pricePromo?.toString() || '',
           shopId: f.shopId?.toString() || '',
@@ -112,6 +115,43 @@ export default function EditFoodScreen() {
         Alert.alert("Lỗi Mạng", "Không thể kết nối ImgBB.");
       } finally {
         setUploading(false);
+      }
+    }
+  };
+
+  const handlePickAndUploadBackup = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setUploadingBackup(true);
+      const asset = result.assets[0];
+
+      try {
+        const formDataUpload = new FormData();
+        formDataUpload.append('image', asset.base64);
+
+        const response = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+          method: 'POST',
+          body: formDataUpload,
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          setFormData(prev => ({ ...prev, backupImg: data.data.url }));
+        } else {
+          Alert.alert("Lỗi Upload", "ImgBB từ chối ảnh này.");
+        }
+      } catch (error) {
+        Alert.alert("Lỗi Mạng", "Không thể kết nối ImgBB.");
+      } finally {
+        setUploadingBackup(false);
       }
     }
   };
@@ -247,7 +287,6 @@ export default function EditFoodScreen() {
         type: formData.type,
         note: formData.note,
         option: options, // Thêm options vào payload (đã có isDefault)
-        image: formData.img ? [formData.img, formData.img, formData.img] : [],
         log: [],
         orderCount: id ? foods.find(f => f.id.toString() === id.toString())?.orderCount || 0 : 0,
         isOutOfTime: false,
@@ -288,15 +327,27 @@ export default function EditFoodScreen() {
             
             <Text style={styles.label}>Link hình ảnh (URL) *</Text>
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                <TextInput 
-                    style={[styles.input, { flex: 1 }]} 
-                    value={formData.img} 
-                    onChangeText={t => setFormData({...formData, img: t})} 
-                    placeholder="https://..." 
-                />
-                <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAndUpload} disabled={uploading}>
-                    {uploading ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Ionicons name="cloud-upload-outline" size={24} color={COLORS.primary} />}
-                </TouchableOpacity>
+              <TextInput 
+                style={[styles.input, { flex: 1 }]} 
+                value={formData.img} 
+                onChangeText={t => setFormData({...formData, img: t})} 
+                placeholder="https://..." 
+              />
+              <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAndUpload} disabled={uploading}>
+                {uploading ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Ionicons name="cloud-upload-outline" size={24} color={COLORS.primary} />}
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.label}>Link ảnh dự phòng (Backup Image URL)</Text>
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+              <TextInput 
+                style={[styles.input, { flex: 1 }]} 
+                value={formData.backupImg} 
+                onChangeText={t => setFormData({...formData, backupImg: t})} 
+                placeholder="https://..." 
+              />
+              <TouchableOpacity style={styles.uploadBtn} onPress={handlePickAndUploadBackup} disabled={uploadingBackup}>
+                {uploadingBackup ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Ionicons name="cloud-upload-outline" size={24} color={COLORS.primary} />}
+              </TouchableOpacity>
             </View>
             
             <Text style={styles.label}>Mô tả / Ghi chú</Text>

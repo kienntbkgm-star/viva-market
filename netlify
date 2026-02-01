@@ -2,5 +2,7 @@ npx expo export --platform web
 netlify deploy --dir=dist --prod
 npx repomix
 
+https://viva-admin.netlify.app 
 
+npx repomix --ignore node_modules,public,assets,netlify,app_txt,brief,desktop.ini --output repomix-codebase.txt .
 

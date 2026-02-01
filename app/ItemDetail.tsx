@@ -1,11 +1,11 @@
 // @ts-nocheck
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection } from 'firebase/firestore';
 import React, { useMemo, useState } from 'react';
 import {
     Alert,
-    Image,
     Platform,
     SafeAreaView,
     ScrollView,
@@ -46,7 +46,7 @@ interface FoodItem {
   timeStart?: number;
   timeEnd?: number;
   img?: string;
-  image?: string[];
+
 }
 
 interface User {
@@ -388,7 +388,7 @@ export default function ItemDetailScreen() {
           quantity: quantity,
           shopId: item.shopId,
           shopName: shopData.name,
-          img: item.img || (Array.isArray(item.image) ? item.image[0] : item.image),
+          img: item.img,
           selectedOptions: selectedOptions.length > 0
             ? selectedOptions.map(idx => {
                 const opt = activeOptions.find(o => o.index === idx);
@@ -413,7 +413,7 @@ export default function ItemDetailScreen() {
               quantity: data.quantity,
               shopId: foodItem.shopId,
               shopName: shopData.name,
-              img: foodItem.img || (Array.isArray(foodItem.image) ? foodItem.image[0] : foodItem.image),
+              img: foodItem.img,
               selectedOptions: data.selectedOpts.length > 0
                 ? data.selectedOpts.map(idx => {
                     const opt = foodItem.option?.find(o => o.index === idx);
@@ -430,6 +430,7 @@ export default function ItemDetailScreen() {
       // Tạo đơn hàng
       const newOrder = {
         orderId: orderId,
+        shopIds: [...new Set(orderItems.map(i => Number(i.shopId)))],
         userId: currentUser ? currentUser.id : Date.now(),
         userName: (isGuestUser || !currentUser) ? gName : currentUser.name,
         userPhone: (isGuestUser || !currentUser) ? gPhone : currentUser.phone,
@@ -608,7 +609,7 @@ export default function ItemDetailScreen() {
     return (
       <View style={styles.quickItem}>
         <Image 
-          source={{ uri: foodItem.img || (foodItem.image && foodItem.image[0]) || 'https://via.placeholder.com/80' }}
+          source={{ uri: foodItem.img || foodItem.backupImg || 'https://via.placeholder.com/80' }}
           style={styles.quickItemImage}
         />
         <View style={styles.quickItemInfo}>
@@ -675,9 +676,10 @@ export default function ItemDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.imageContainer}>
           <Image
-            source={{ uri: item.img || (item.image && item.image[0]) || 'https://via.placeholder.com/300' }}
+            source={item.img || item.backupImg || 'https://via.placeholder.com/300'}
             style={styles.image}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
           />
         </View>
 

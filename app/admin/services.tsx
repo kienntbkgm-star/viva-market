@@ -3,6 +3,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { doc, updateDoc, writeBatch } from 'firebase/firestore';
@@ -11,7 +12,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Platform,
   SafeAreaView,
   StyleSheet,
@@ -56,7 +56,7 @@ export default function AdminServicesScreen() {
         priceNormal: item.priceNormal, 
         pricePromo: item.pricePromo,   
         moneyShare: item.moneyShare,   // Tỷ lệ % cho Admin
-        image: item.image,             
+        img: item.img,             
         status: item.status,           
         index: item.index,
         shopId: item.shopId,
@@ -118,7 +118,7 @@ export default function AdminServicesScreen() {
           priceNormal: Number(row["priceNormal"]) || 0,
           pricePromo: Number(row["pricePromo"]) || 0,
           moneyShare: Number(row["moneyShare"]) || 0,
-          image: row["image"] || "",
+          img: row["img"] || "",
           status: row["status"] || "enable",
           index: Number(row["index"]) || 0,
           shopId: Number(row["shopId"]) || 0,
@@ -139,31 +139,34 @@ export default function AdminServicesScreen() {
   const renderServiceItem = ({ item }) => {
     const isEnabled = item.status === 'enable';
     return (
-      <TouchableOpacity 
-        style={[styles.card, !isEnabled && styles.disabledCard]}
-        activeOpacity={0.7}
-        onPress={() => router.push({ pathname: '/admin/edit-service', params: { id: item.id } })}
-      >
-        <Image source={{ uri: item.image || 'https://via.placeholder.com/150' }} style={styles.serviceImg} />
-        
-        <View style={styles.info}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.serviceName} numberOfLines={1}>{item.name}</Text>
-            <Switch
-              value={isEnabled}
-              onValueChange={() => handleToggleService(item.id, item.status)}
-              trackColor={{ false: '#D1D1D1', true: COLORS.primary + '50' }}
-            />
+      <View style={[styles.card, !isEnabled && styles.disabledCard, { position: 'relative' }]}> 
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={0.7}
+          onPress={() => router.push({ pathname: '/admin/edit-service', params: { id: item.id } })}
+        >
+          <Image source={item.img || item.backupImg || 'https://via.placeholder.com/150'} style={styles.serviceImg} contentFit="cover" cachePolicy="memory-disk" />
+          <View style={styles.info}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.serviceName} numberOfLines={1}>{item.name}</Text>
+              {/* Switch sẽ được render bên ngoài TouchableOpacity */}
+            </View>
+            <Text style={styles.priceText}>Giá bán: {item.pricePromo}K <Text style={styles.oldPrice}>{item.priceNormal}K</Text></Text>
+            <View style={styles.rowBetween}>
+              <Text style={styles.shareText}>Admin: {item.moneyShare}%</Text>
+              <Text style={styles.idText}>ID: {item.id}</Text>
+            </View>
           </View>
-          
-          <Text style={styles.priceText}>Giá bán: {item.pricePromo}K <Text style={styles.oldPrice}>{item.priceNormal}K</Text></Text>
-          
-          <View style={styles.rowBetween}>
-            <Text style={styles.shareText}>Admin: {item.moneyShare}%</Text>
-            <Text style={styles.idText}>ID: {item.id}</Text>
-          </View>
+        </TouchableOpacity>
+        {/* Switch nằm ngoài TouchableOpacity, đặt ở góc phải trên card */}
+        <View style={{ position: 'absolute', top: 10, right: 10, zIndex: 10 }}>
+          <Switch
+            value={isEnabled}
+            onValueChange={() => handleToggleService(item.id, item.status)}
+            trackColor={{ false: '#D1D1D1', true: COLORS.primary + '50' }}
+          />
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 

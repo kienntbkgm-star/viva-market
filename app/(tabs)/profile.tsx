@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { Ionicons, MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import bcryptjs from 'bcryptjs';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { MyInput } from '../../src/components/MyUI';
 import { useAppStore } from '../../src/store/useAppStore';
 import { COLORS, GlobalStyles } from '../../src/styles/GlobalStyles';
@@ -342,8 +343,10 @@ export default function ProfileScreen() {
                                 return (
                                     <View key={food.id} style={styles.foodRow}>
                                         <Image
-                                            source={{ uri: food.img || 'https://via.placeholder.com/150' }}
+                                            source={food.img || food.backupImg || 'https://via.placeholder.com/150'}
                                             style={styles.foodImage}
+                                            contentFit="cover"
+                                            cachePolicy="memory-disk"
                                         />
                                         <View style={{ flex: 1, marginLeft: 10 }}>
                                             <Text style={styles.foodName}>{food.name}</Text>
